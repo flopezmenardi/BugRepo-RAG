@@ -1,0 +1,42 @@
+# --------------------
+# 🔁 General
+# --------------------
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.bak
+*.tmp
+
+# --------------------
+# 🚀 Environment / Secrets
+# --------------------
+.env
+.env.*
+!env.example  
+
+
+# --------------------
+# 🐍 Python
+# --------------------
+**/__pycache__/
+**/*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+env/
+venv/
+.venv/
+
+# --------------------
+# 🧪 Testing / Debugging
+# --------------------
+*.out
+*.o
+*.obj
+*.dSYM
