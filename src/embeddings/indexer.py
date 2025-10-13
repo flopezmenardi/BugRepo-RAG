@@ -31,13 +31,14 @@ class BugReportIndexer:
     5. Store in Pinecone vector database
     """
     
-    def __init__(self, index_name: str = None, test_limit: int = None):
+    def __init__(self, index_name: str = None, test_limit: int = None, start_offset: int = 0):
         """
         Initialize the indexer
         
         Args:
             index_name (str): Name of the Pinecone index. Defaults to Config.PINECONE_INDEX_NAME
             test_limit (int): Limit number of bugs to process for testing. None for all bugs.
+            start_offset (int): Skip the first N bugs (0 = start from beginning).
         """
         # Validate configuration
         Config.validate_config()
@@ -46,6 +47,7 @@ class BugReportIndexer:
         self.embedder = BugReportEmbedder()
         self.index_name = index_name or Config.PINECONE_INDEX_NAME
         self.test_limit = test_limit
+        self.start_offset = start_offset
         
         # Initialize Pinecone
         self._init_pinecone()
@@ -54,10 +56,19 @@ class BugReportIndexer:
         # self.cleaner = BugReportCleaner()
         # self.splitter = BugReportSplitter()
         
+        # Build status message
+        status_parts = []
+        if self.start_offset > 0:
+            status_parts.append(f"starting from bug #{self.start_offset + 1}")
         if self.test_limit:
-            logger.info(f"Initialized BugReportIndexer for index: {self.index_name} (TEST MODE: {self.test_limit} bugs only)")
+            status_parts.append(f"processing {self.test_limit} bugs")
+        
+        if status_parts:
+            status_msg = f" ({', '.join(status_parts)})"
         else:
-            logger.info(f"Initialized BugReportIndexer for index: {self.index_name}")
+            status_msg = ""
+        
+        logger.info(f"Initialized BugReportIndexer for index: {self.index_name}{status_msg}")
     
     def _init_pinecone(self):
         """Initialize Pinecone client and connect to existing index"""
@@ -140,12 +151,21 @@ class BugReportIndexer:
             # Load the structured CSV
             df = pd.read_csv(csv_file)
             logger.info(f"Loaded CSV with columns: {list(df.columns)}")
+            original_count = len(df)
             
-            # Apply test limit if specified
+            # Apply start_offset if specified
+            if self.start_offset > 0:
+                df = df.iloc[self.start_offset:]
+                logger.info(f"Skipped first {self.start_offset} bugs, {len(df)} remaining")
+            
+            # Apply test_limit if specified (after offset)
             if self.test_limit:
-                original_count = len(df)
                 df = df.head(self.test_limit)
-                logger.info(f"TEST MODE: Limited to {len(df)} bugs out of {original_count} total")
+                end_bug = self.start_offset + len(df)
+                logger.info(f"Processing bugs #{self.start_offset + 1}-{end_bug} ({len(df)} bugs) out of {original_count} total")
+            elif self.start_offset > 0:
+                end_bug = self.start_offset + len(df) 
+                logger.info(f"Processing bugs #{self.start_offset + 1}-{end_bug} ({len(df)} bugs) out of {original_count} total")
             
             # Convert to list of dictionaries
             bug_reports = df.to_dict('records')
@@ -357,9 +377,12 @@ def main():
     Can be called directly: python src/embeddings/indexer.py
     """
     try:
-        # Initialize with test limit for safe testing
-        # Change test_limit=5 to test_limit=None for full run
-        indexer = BugReportIndexer(test_limit=5)
+        # Initialize with batch processing parameters
+        # Examples:
+        # BugReportIndexer(test_limit=1000, start_offset=0)     # First 1000 bugs (1-1000)
+        # BugReportIndexer(test_limit=1000, start_offset=1000)  # Next 1000 bugs (1001-2000)
+        # BugReportIndexer(test_limit=None, start_offset=0)     # All bugs from beginning
+        indexer = BugReportIndexer(test_limit=9000, start_offset=1000)
         
         # Test connection
         if not indexer.embedder.test_connection():
