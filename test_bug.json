@@ -1,0 +1,10 @@
+{
+    "bug_id": "test_001",
+    "type": "defect",
+    "product": "Firefox",
+    "component": "General",
+    "status": "NEW",
+    "resolution": "",
+    "updated": "2025-10-13",
+    "summary": "Browser crashes when opening large files with many images and complex JavaScript interactions"
+}
