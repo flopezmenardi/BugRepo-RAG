@@ -27,7 +27,7 @@ from src.config import Config
 from src.embeddings.embedder import BugReportEmbedder
 from src.retrieval.retriever import BugReportRetriever
 # from src.llm.prompts import enhance_bug_text  # Not implemented yet
-# from src.llm.generator import generate_report  # Not implemented yet
+from src.llm.generator import generate_report
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -48,7 +48,6 @@ class RAGPipeline:
         # Initialize components
         self.embedder = BugReportEmbedder()
         self.retriever = BugReportRetriever()
-        
         logger.info("RAG Pipeline initialized successfully")
     
     def process_bug_report(self, bug_report_path: str) -> Dict[str, Any]:
@@ -213,33 +212,10 @@ class RAGPipeline:
         Returns:
             str: Path to generated report file
         """
-        # TODO: Implement when generator.py is ready
-        # report_path = generate_report(bug_data, similar_bug_ids)
-        # return report_path
-        
-        # Placeholder: create a simple report file
         try:
-            output_dir = Config.OUTPUTS_DIR
-            output_dir.mkdir(exist_ok=True)
-            
-            report_filename = f"bug_report_{bug_data.get('bug_id', 'unknown')}.txt"
-            report_path = output_dir / report_filename
-            
-            with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(f"Bug Report Analysis\n")
-                f.write(f"==================\n\n")
-                f.write(f"Input Bug ID: {bug_data.get('bug_id')}\n")
-                f.write(f"Type: {bug_data.get('type')}\n")
-                f.write(f"Product: {bug_data.get('product')}\n")
-                f.write(f"Component: {bug_data.get('component')}\n")
-                f.write(f"Summary: {bug_data.get('summary', 'N/A')}\n\n")
-                f.write(f"Similar Bugs Found: {len(similar_bug_ids)}\n")
-                f.write(f"Similar Bug IDs: {', '.join(similar_bug_ids)}\n\n")
-                f.write(f"Note: This is a placeholder report. Full report generation not implemented yet.\n")
-            
-            logger.info(f"Generated placeholder report: {report_path}")
-            return str(report_path)
-            
+            report_path = generate_report(bug_data, similar_bug_ids)
+            logger.info("Generated LLM-backed report: %s", report_path)
+            return report_path
         except Exception as e:
             logger.error(f"Failed to generate report: {str(e)}")
             return ""
