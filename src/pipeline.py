@@ -28,6 +28,7 @@ from src.embeddings.embedder import BugReportEmbedder
 from src.retrieval.retriever import BugReportRetriever
 # from src.llm.prompts import enhance_bug_text  # Not implemented yet
 from src.llm.generator import generate_report
+from src.llm.prompts import reformulate_bug_query
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -148,13 +149,22 @@ class RAGPipeline:
         Returns:
             str: Enhanced text optimized for retrieval
         """
-        # TODO: Implement when prompts.py is ready
-        # enhanced = enhance_bug_text(original_text)
-        # return enhanced
-        
-        # Placeholder: return original text for now
-        logger.info("Using original text (enhancement not implemented yet)")
-        return original_text
+        try:
+            enhanced = reformulate_bug_query(original_text)
+            
+            # If the LLM determines it's not bug-related, use original text
+            if enhanced == "NON-BUG":
+                logger.warning("Query determined as non-bug related, using original text")
+                enhanced = original_text
+            
+            logger.info(f"Enhanced text: {enhanced}")
+            return enhanced
+            
+        except Exception as e:
+            logger.error(f"Failed to enhance bug text: {str(e)}")
+            logger.info("Using original text as fallback")
+            return original_text
+
     
     def _generate_embedding(self, text: str) -> List[float]:
         """
