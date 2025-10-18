@@ -4,11 +4,11 @@ import time
 
 # Config
 BASE_URL = "https://bugzilla.mozilla.org/rest"
-INPUT_CSV = "data/sample_bugs.csv"   # existing metadata file
-OUTPUT_COMMENTS = "data/bugs_comments.csv"
-RATE_LIMIT = 0.1  # seconds between requests to be nice to API
-TEST_LIMIT = 1000   # Only process first N bugs for testing (set to None for all)
-START_OFFSET = 9000  # Skip the first N bugs (0 = start from beginning)
+INPUT_CSV = "..\\data\\bugs_since.csv"   # existing metadata file
+OUTPUT_COMMENTS = "..\\data\\bugs_comments.csv"
+RATE_LIMIT = 0.05  # seconds between requests to be nice to API
+TEST_LIMIT = 10000   # Only process first N bugs for testing (set to None for all)
+START_OFFSET = 0  # Skip the first N bugs (0 = start from beginning)
 APPEND_MODE = True   # True = append to existing CSV, False = overwrite
 
 
