@@ -71,9 +71,19 @@ class BugReportRetriever:
         Returns:
             List[str]: List of bug IDs of similar bugs
         """
-        logger.info(f"Searching for similar bugs with filters: type={bug_type}, product={product}, component={component}")
+        logger.info(f"🔍 Starting similarity search with embedding dimension: {len(query_embedding)}")
+        logger.info(f"📊 Search filters: type='{bug_type}', product='{product}', component='{component}'")
+        logger.info(f"🎯 Search parameters: top_k={top_k}, min_results={min_results}")
+        
+        # First, let's check index stats
+        try:
+            stats = self.index.describe_index_stats()
+            logger.info(f"📈 Index stats: {stats}")
+        except Exception as e:
+            logger.error(f"❌ Failed to get index stats: {str(e)}")
         
         # Strategy 1: Search with all three filters (type, product, component)
+        logger.info("🔍 Strategy 1: Searching with ALL filters (type + product + component)")
         bug_ids = self._search_with_filters(
             query_embedding, 
             {"type": bug_type, "product": product, "component": component},
@@ -81,12 +91,13 @@ class BugReportRetriever:
         )
         
         if len(bug_ids) >= min_results:
-            logger.info(f"Found {len(bug_ids)} results with all filters")
+            logger.info(f"✅ Strategy 1 SUCCESS: Found {len(bug_ids)} results with all filters")
             return bug_ids
         
-        logger.info(f"Only found {len(bug_ids)} results with all filters, dropping 'type' filter")
+        logger.warning(f"⚠️ Strategy 1 INSUFFICIENT: Only found {len(bug_ids)} results with all filters, dropping 'type' filter")
         
         # Strategy 2: Drop 'type' filter, keep product and component
+        logger.info("🔍 Strategy 2: Searching without 'type' filter (product + component only)")
         bug_ids = self._search_with_filters(
             query_embedding,
             {"product": product, "component": component},
@@ -94,19 +105,32 @@ class BugReportRetriever:
         )
         
         if len(bug_ids) >= min_results:
-            logger.info(f"Found {len(bug_ids)} results without 'type' filter")
+            logger.info(f"✅ Strategy 2 SUCCESS: Found {len(bug_ids)} results without 'type' filter")
             return bug_ids
         
-        logger.info(f"Only found {len(bug_ids)} results without 'type' filter, dropping 'component' filter")
+        logger.warning(f"⚠️ Strategy 2 INSUFFICIENT: Only found {len(bug_ids)} results without 'type' filter, dropping 'component' filter")
         
         # Strategy 3: Keep only 'product' filter (most important)
+        logger.info("🔍 Strategy 3: Searching with ONLY 'product' filter")
         bug_ids = self._search_with_filters(
             query_embedding,
             {"product": product},
             top_k
         )
         
-        logger.info(f"Found {len(bug_ids)} results with only 'product' filter")
+        if len(bug_ids) > 0:
+            logger.info(f"✅ Strategy 3 SUCCESS: Found {len(bug_ids)} results with only 'product' filter")
+        else:
+            logger.error(f"❌ Strategy 3 FAILED: Found {len(bug_ids)} results even with minimal filtering!")
+            
+            # Emergency Strategy 4: Search with NO filters at all
+            logger.info("🚨 Strategy 4: EMERGENCY search with NO filters")
+            bug_ids = self._search_with_filters(query_embedding, {}, top_k)
+            if len(bug_ids) > 0:
+                logger.warning(f"⚠️ Strategy 4: Found {len(bug_ids)} results with NO filters - metadata filtering issue!")
+            else:
+                logger.error(f"💀 Strategy 4 TOTAL FAILURE: No results even without filters - check embedding or index!")
+        
         return bug_ids
     
     def _search_with_filters(self, 
@@ -128,13 +152,20 @@ class BugReportRetriever:
             # Prepare filter for Pinecone query
             # Pinecone expects filters in this format: {"field": {"$eq": "value"}}
             pinecone_filter = {}
+            active_filters = {}
+            
             for field, value in filters.items():
                 if value:  # Only add non-empty filters
                     pinecone_filter[field] = {"$eq": value}
+                    active_filters[field] = value
+            
+            logger.info(f"🔍 Executing Pinecone query with {len(active_filters)} active filters: {active_filters}")
+            logger.debug(f"🔧 Pinecone filter format: {pinecone_filter}")
+            logger.debug(f"📏 Query embedding sample: [{query_embedding[0]:.4f}, {query_embedding[1]:.4f}, ..., {query_embedding[-1]:.4f}]")
             
             # Execute the query
             if pinecone_filter:
-                logger.debug(f"Querying with filters: {pinecone_filter}")
+                logger.info(f"🎯 Querying WITH metadata filters")
                 response = self.index.query(
                     vector=query_embedding,
                     top_k=top_k,
@@ -142,26 +173,46 @@ class BugReportRetriever:
                     filter=pinecone_filter
                 )
             else:
-                logger.debug("Querying without filters")
+                logger.info(f"🎯 Querying WITHOUT metadata filters")
                 response = self.index.query(
                     vector=query_embedding,
                     top_k=top_k,
                     include_metadata=True
                 )
             
+            logger.info(f"📊 Pinecone returned {len(response.matches)} matches")
+            
             # Extract bug IDs from the response
             bug_ids = []
-            for match in response.matches:
+            for i, match in enumerate(response.matches):
                 # The bug_id should be in the metadata
                 bug_id = match.metadata.get('bug_id')
+                score = match.score
+                
+                logger.info(f"  📋 Match {i+1}: bug_id='{bug_id}', score={score:.4f}")
+                logger.debug(f"     📂 Full metadata: {match.metadata}")
+                
                 if bug_id:
-                    bug_ids.append(str(bug_id))
-                    logger.debug(f"Found bug {bug_id} with score {match.score}")
+                    # Convert float bug IDs to integers for consistency
+                    if isinstance(bug_id, (int, float)):
+                        bug_id = str(int(float(bug_id)))
+                    bug_ids.append(bug_id)
+                else:
+                    logger.warning(f"  ⚠️ Match {i+1} missing bug_id in metadata: {match.metadata}")
+            
+            if not bug_ids:
+                logger.warning(f"❌ No valid bug_ids extracted from {len(response.matches)} matches!")
+                if response.matches:
+                    logger.info("🔍 Sample match metadata for debugging:")
+                    for i, match in enumerate(response.matches[:2]):  # Show first 2 matches
+                        logger.info(f"  Match {i+1} metadata keys: {list(match.metadata.keys())}")
+                        logger.info(f"  Match {i+1} metadata: {match.metadata}")
             
             return bug_ids
             
         except Exception as e:
-            logger.error(f"Error during Pinecone search: {str(e)}")
+            logger.error(f"❌ Error during Pinecone search: {str(e)}")
+            logger.error(f"🔧 Query details - filters: {filters}, top_k: {top_k}")
             return []
     
     def get_bug_details(self, bug_ids: List[str]) -> List[Dict[str, Any]]:
@@ -178,16 +229,39 @@ class BugReportRetriever:
             return []
         
         try:
+            # Convert bug IDs to integers to ensure consistent formatting
+            normalized_bug_ids = []
+            for bug_id in bug_ids:
+                if isinstance(bug_id, (int, float)):
+                    normalized_id = str(int(float(bug_id)))
+                else:
+                    # Try to convert string to int (removes .0 if present)
+                    try:
+                        normalized_id = str(int(float(bug_id)))
+                    except (ValueError, TypeError):
+                        normalized_id = str(bug_id)
+                normalized_bug_ids.append(normalized_id)
+            
+            logger.info(f"📋 Fetching bug details for {len(normalized_bug_ids)} bugs: {normalized_bug_ids}")
+            
             # Fetch vectors by their IDs to get full metadata
-            response = self.index.fetch(ids=[f"{bug_id}_0" for bug_id in bug_ids])  # Assuming chunk index 0
+            vector_ids = [f"{bug_id}_0" for bug_id in normalized_bug_ids]  # Assuming chunk index 0
+            logger.debug(f"🔍 Looking for vector IDs: {vector_ids}")
+            
+            response = self.index.fetch(ids=vector_ids)
+            logger.info(f"📊 Pinecone fetch returned {len(response.vectors)} vectors out of {len(vector_ids)} requested")
             
             bug_details = []
-            for bug_id in bug_ids:
+            for bug_id in normalized_bug_ids:
                 vector_id = f"{bug_id}_0"
                 if vector_id in response.vectors:
                     metadata = response.vectors[vector_id].metadata
                     bug_details.append(metadata)
+                    logger.debug(f"✅ Found metadata for bug {bug_id}")
+                else:
+                    logger.warning(f"❌ No vector found for bug ID {bug_id} (vector_id: {vector_id})")
             
+            logger.info(f"📋 Successfully fetched details for {len(bug_details)} bugs")
             return bug_details
             
         except Exception as e:

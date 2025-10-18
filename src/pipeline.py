@@ -177,11 +177,18 @@ class RAGPipeline:
             List[float]: Embedding vector
         """
         try:
+            logger.info(f"🔢 Generating embedding for text: '{text[:100]}{'...' if len(text) > 100 else ''}'")
             embedding = self.embedder.embed_text(text)
-            logger.info(f"Generated embedding with {len(embedding)} dimensions")
+            logger.info(f"✅ Generated embedding with {len(embedding)} dimensions")
+            logger.debug(f"📊 Embedding sample: [{embedding[0]:.4f}, {embedding[1]:.4f}, ..., {embedding[-1]:.4f}]")
+            
+            # Basic validation
+            if len(embedding) != 512:
+                logger.error(f"❌ Unexpected embedding dimension: {len(embedding)} (expected 512)")
+            
             return embedding
         except Exception as e:
-            logger.error(f"Failed to generate embedding: {str(e)}")
+            logger.error(f"❌ Failed to generate embedding: {str(e)}")
             return []
     
     def _retrieve_similar_bugs(self, query_embedding: List[float], bug_data: Dict[str, Any]) -> List[str]:
@@ -196,19 +203,37 @@ class RAGPipeline:
             List[str]: List of similar bug IDs
         """
         try:
+            # Extract filter values and log them
+            bug_type = bug_data.get('type', '')
+            product = bug_data.get('product', '')
+            component = bug_data.get('component', '')
+            
+            logger.info(f"🔍 Preparing retrieval with:")
+            logger.info(f"   📊 Embedding: {len(query_embedding)} dimensions")
+            logger.info(f"   🏷️ Filters: type='{bug_type}', product='{product}', component='{component}'")
+            logger.info(f"   🎯 Top-K: {Config.TOP_K_RESULTS}")
+            
             similar_bugs = self.retriever.retrieve_similar_bugs(
                 query_embedding=query_embedding,
-                bug_type=bug_data.get('type', ''),
-                product=bug_data.get('product', ''),
-                component=bug_data.get('component', ''),
+                bug_type=bug_type,
+                product=product,
+                component=component,
                 top_k=Config.TOP_K_RESULTS
             )
             
-            logger.info(f"Retrieved {len(similar_bugs)} similar bugs")
+            if similar_bugs:
+                logger.info(f"✅ Retrieved {len(similar_bugs)} similar bugs: {similar_bugs}")
+            else:
+                logger.error(f"❌ NO similar bugs found! This suggests an issue with:")
+                logger.error(f"   🔍 1. Pinecone index might be empty")
+                logger.error(f"   🔍 2. Metadata filters might be too restrictive") 
+                logger.error(f"   🔍 3. Embedding dimension mismatch")
+                logger.error(f"   🔍 4. Index connection issues")
+            
             return similar_bugs
             
         except Exception as e:
-            logger.error(f"Failed to retrieve similar bugs: {str(e)}")
+            logger.error(f"❌ Failed to retrieve similar bugs: {str(e)}")
             return []
     
     def _generate_report(self, bug_data: Dict[str, Any], similar_bug_ids: List[str]) -> str:

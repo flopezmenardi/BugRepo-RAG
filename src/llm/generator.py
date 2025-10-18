@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import pandas as pd
 from openai import OpenAI
 
 # Ensure project root is on the path for absolute imports
@@ -84,24 +85,59 @@ class BugReportGenerator:
         return str(report_path)
 
     def _fetch_context(self, similar_bug_ids: List[str]) -> List[Dict[str, Any]]:
-        """Retrieve metadata for similar bugs if IDs are available."""
+        """Retrieve metadata for similar bugs from the original CSV data."""
         if not similar_bug_ids:
             logger.warning("No similar bug IDs provided; skipping context assembly")
             return []
 
-        if self.retriever is None:
-            try:
-                self.retriever = BugReportRetriever()
-            except Exception as exc:
-                logger.error("Failed to initialize retriever: %s", exc)
-                return []
-
         try:
-            context = self.retriever.get_bug_details(similar_bug_ids)
-            logger.info("Fetched %d contextual bugs for report generation", len(context))
+            # Load the original CSV data to get complete bug information
+            csv_path = Config.PROJECT_ROOT / "data" / "sample_bugs.csv"
+            if not csv_path.exists():
+                logger.error(f"CSV data file not found: {csv_path}")
+                return []
+            
+            logger.info(f"Loading bug data from CSV: {csv_path}")
+            df = pd.read_csv(csv_path)
+            
+            # Convert bug IDs to integers for matching
+            normalized_bug_ids = []
+            for bug_id in similar_bug_ids:
+                try:
+                    # Convert float strings like "1546498.0" to integers
+                    normalized_id = int(float(bug_id))
+                    normalized_bug_ids.append(normalized_id)
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert bug_id '{bug_id}' to integer")
+                    continue
+            
+            logger.info(f"Looking for bugs with IDs: {normalized_bug_ids}")
+            
+            # Filter dataframe to get matching bugs
+            matching_bugs = df[df['Bug ID'].isin(normalized_bug_ids)]
+            logger.info(f"Found {len(matching_bugs)} matching bugs in CSV")
+            
+            # Convert to list of dictionaries
+            context = []
+            for _, row in matching_bugs.iterrows():
+                bug_dict = {
+                    'bug_id': str(int(row['Bug ID'])),
+                    'summary': row.get('Summary', ''),
+                    'type': row.get('Type', ''),
+                    'product': row.get('Product', ''),
+                    'component': row.get('Component', ''),
+                    'status': row.get('Status', ''),
+                    'resolution': row.get('Resolution', ''),
+                    'updated': row.get('Updated', ''),
+                    'assignee': row.get('Assignee', ''),
+                }
+                context.append(bug_dict)
+            
+            logger.info(f"Successfully fetched {len(context)} contextual bugs for report generation")
             return context
+            
         except Exception as exc:
-            logger.error("Failed to fetch bug context: %s", exc)
+            logger.error(f"Failed to fetch bug context from CSV: {exc}")
             return []
 
     def _build_prompt(
