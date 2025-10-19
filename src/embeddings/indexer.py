@@ -25,8 +25,8 @@ class BugReportIndexer:
     
     This class handles the full pipeline:
     1. Load raw data from data directory
-    2. Clean the data (via cleaner.py)
-    3. Split into chunks (via splitter.py)
+    2. Clean the metadata values (NaNs, etc)
+    3. Split into chunks if necessary (bug summaries tend to be short)
     4. Generate embeddings (via embedder.py)
     5. Store in Pinecone vector database
     """
@@ -51,10 +51,6 @@ class BugReportIndexer:
         
         # Initialize Pinecone
         self._init_pinecone()
-        
-        # Placeholders for preprocessing components (to be implemented when we have data)
-        # self.cleaner = BugReportCleaner()
-        # self.splitter = BugReportSplitter()
         
         # Build status message
         status_parts = []
@@ -138,9 +134,9 @@ class BugReportIndexer:
         data_path = Path(data_path)
         
         try:
-            # If it's a directory, look for sample_bugs.csv
+            # If it's a directory, look for bugs_since.csv (new dataset)
             if data_path.is_dir():
-                csv_file = data_path / "sample_bugs.csv"
+                csv_file = data_path / "bugs_since.csv"
             else:
                 csv_file = data_path
             
@@ -195,10 +191,12 @@ class BugReportIndexer:
         
         for i, bug_report in enumerate(tqdm(raw_data, desc="Processing bug reports")):
             try:
-                # Extract the summary for embedding
-                summary = bug_report.get('Summary', '')
+                # Extract the summary for embedding (new CSV format uses lowercase 'summary')
+                summary = bug_report.get('summary', '')
+                bug_id_raw = bug_report.get('bug_id', i)
+                
                 if not summary or summary.strip() == '':
-                    logger.warning(f"Bug {bug_report.get('Bug ID', i)} has no summary, skipping")
+                    logger.warning(f"Bug {bug_id_raw} has no summary, skipping")
                     continue
                 
                 # Clean the summary text (basic cleaning only)
@@ -209,19 +207,20 @@ class BugReportIndexer:
                 
                 # Create chunk data for each piece (usually just one)
                 for j, chunk_text in enumerate(chunks):
+                    # Ensure bug ID is always an integer (convert float to int if needed)
+                    bug_id = int(float(bug_id_raw)) if isinstance(bug_id_raw, (int, float, str)) else i
+                    
                     chunk_data = {
-                        "id": f"{bug_report.get('Bug ID', i)}_{j}",
+                        "id": f"{bug_id}_{j}",
                         "text": chunk_text,
-                        "original_bug_id": bug_report.get('Bug ID', i),
+                        "original_bug_id": bug_id,
                         "chunk_index": j,
                         "metadata": {
-                            "bug_id": bug_report.get('Bug ID', ''),
-                            "type": bug_report.get('Type', ''),
-                            "product": bug_report.get('Product', ''),
-                            "component": bug_report.get('Component', ''),
-                            "status": bug_report.get('Status', ''),
-                            "resolution": bug_report.get('Resolution', ''),
-                            "updated": bug_report.get('Updated', ''),
+                            "bug_id": str(bug_id),  # Store as string for consistency
+                            "product": self._clean_metadata_value(bug_report.get('product', '')),
+                            "component": self._clean_metadata_value(bug_report.get('component', '')),
+                            "status": self._clean_metadata_value(bug_report.get('status', '')),
+                            "resolution": self._clean_metadata_value(bug_report.get('resolution', '')),
                         }
                     }
                     processed_chunks.append(chunk_data)
@@ -233,6 +232,36 @@ class BugReportIndexer:
         logger.info(f"Processed {len(processed_chunks)} chunks from {len(raw_data)} bug reports")
         return processed_chunks
     
+    def _clean_metadata_value(self, value: Any) -> str:
+        """
+        Clean metadata values to handle NaN, None, and other problematic values
+        
+        Args:
+            value: Raw metadata value
+            
+        Returns:
+            str: Cleaned string value safe for Pinecone
+        """
+        import pandas as pd
+        import numpy as np
+        
+        # Handle NaN values (from pandas and numpy)
+        if pd.isna(value) or (hasattr(np, 'isnan') and isinstance(value, float) and np.isnan(value)):
+            return ""
+        
+        # Handle None values
+        if value is None:
+            return ""
+        
+        # Convert to string and strip
+        str_value = str(value).strip()
+        
+        # Handle common problematic values
+        if str_value.lower() in ['nan', 'none', 'null', '<na>']:
+            return ""
+        
+        return str_value
+
     def _basic_clean_text(self, text: str) -> str:
         """
         Basic text cleaning for embedding generation
@@ -307,12 +336,18 @@ class BugReportIndexer:
         texts = [chunk['text'] for chunk in chunks]
         
         # Generate embeddings in batches
+        logger.info(f"📊 Generating embeddings for {len(texts)} texts...")
         all_embeddings = self.embedder.embed_texts(texts)
         
         # Prepare vectors for Pinecone
         vectors_to_upsert = []
         
         for i, (chunk, embedding) in enumerate(zip(chunks, all_embeddings)):
+            # Clean all metadata values to avoid NaN issues
+            cleaned_metadata = {}
+            for key, value in chunk['metadata'].items():
+                cleaned_metadata[key] = self._clean_metadata_value(value)
+            
             vector_data = {
                 "id": chunk['id'],
                 "values": embedding,
@@ -320,7 +355,7 @@ class BugReportIndexer:
                     "text": chunk['text'][:1000],  # Truncate for metadata storage
                     "original_bug_id": chunk['original_bug_id'],
                     "chunk_index": chunk['chunk_index'],
-                    **chunk['metadata']
+                    **cleaned_metadata
                 }
             }
             vectors_to_upsert.append(vector_data)
@@ -329,13 +364,24 @@ class BugReportIndexer:
         batch_size = 100
         total_upserted = 0
         
+        logger.info(f"🚀 Uploading {len(vectors_to_upsert)} vectors to Pinecone in batches of {batch_size}...")
+        
         for i in tqdm(range(0, len(vectors_to_upsert), batch_size), desc="Upserting to Pinecone"):
             batch = vectors_to_upsert[i:i + batch_size]
             try:
+                # Add validation logging for first batch to help debug
+                if i == 0:
+                    logger.debug(f"First batch sample metadata: {batch[0]['metadata']}")
+                
                 upsert_response = self.index.upsert(vectors=batch)
                 total_upserted += upsert_response.upserted_count
+                    
             except Exception as e:
                 logger.error(f"Error upserting batch {i//batch_size + 1}: {str(e)}")
+                # Log problematic batch for debugging
+                if len(batch) > 0:
+                    logger.error(f"Problematic batch sample - ID: {batch[0]['id']}, metadata keys: {list(batch[0]['metadata'].keys())}")
+                    logger.error(f"Sample metadata values: {batch[0]['metadata']}")
                 continue
         
         # Get index stats
@@ -382,7 +428,7 @@ def main():
         # BugReportIndexer(test_limit=1000, start_offset=0)     # First 1000 bugs (1-1000)
         # BugReportIndexer(test_limit=1000, start_offset=1000)  # Next 1000 bugs (1001-2000)
         # BugReportIndexer(test_limit=None, start_offset=0)     # All bugs from beginning
-        indexer = BugReportIndexer(test_limit=9000, start_offset=1000)
+        indexer = BugReportIndexer(test_limit=3384, start_offset=40000)
         
         # Test connection
         if not indexer.embedder.test_connection():

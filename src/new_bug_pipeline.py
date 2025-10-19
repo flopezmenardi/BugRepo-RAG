@@ -26,9 +26,8 @@ sys.path.insert(0, str(project_root))
 from src.config import Config
 from src.embeddings.embedder import BugReportEmbedder
 from src.retrieval.retriever import BugReportRetriever
-# from src.llm.prompts import enhance_bug_text  # Not implemented yet
-from src.llm.generator import generate_report
-from src.llm.prompts import reformulate_bug_query
+from llm.generate_report import generate_report
+from llm.enhance_prompt import reformulate_bug_query
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

@@ -40,3 +40,7 @@ venv/
 *.o
 *.obj
 *.dSYM
+
+bugs_comments.csv
+test_metadata_cleaning.py
+test_single_bug_indexing.py

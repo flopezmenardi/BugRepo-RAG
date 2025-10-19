@@ -21,7 +21,7 @@ RATE_LIMIT = 0.0        # per-request sleep in main loop; concurrency handles th
 TEST_LIMIT = 40000
 START_OFFSET = 10000
 APPEND_MODE = True
-MAX_WORKERS = 16        # tune based on your network/CPU; 8–32 is typical
+MAX_WORKERS = 16        
 TIMEOUT = 60
 HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
 
