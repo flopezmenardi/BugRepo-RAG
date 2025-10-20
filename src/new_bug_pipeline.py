@@ -248,7 +248,13 @@ class RAGPipeline:
             str: Path to generated report file
         """
         try:
-            report_path = generate_report(bug_data, similar_candidates)
+            candidate_ids = [
+                str(item.get("bug_id") or "").strip()
+                for item in (similar_candidates or [])
+                if item and str(item.get("bug_id") or "").strip()
+            ]
+
+            report_path = generate_report(bug_data, candidate_ids)
             logger.info("Generated LLM-backed report: %s", report_path)
             return report_path
         except Exception as e:
