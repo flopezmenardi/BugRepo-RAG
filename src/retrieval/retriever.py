@@ -56,7 +56,8 @@ class BugReportRetriever:
                             product: str, 
                             component: str,
                             top_k: int = 10,
-                            min_results: int = 3) -> List[str]:
+                            min_results: int = 3,
+                            return_scores: bool = False) -> List[Any]:
         """
         Retrieve similar bug reports using cascading metadata filters
         
@@ -67,9 +68,10 @@ class BugReportRetriever:
             component (str): Component filter (e.g., "General", "Security")
             top_k (int): Maximum number of results to return
             min_results (int): Minimum results needed before dropping filters
+            return_scores (bool): If True, include similarity scores alongside bug IDs
             
         Returns:
-            List[str]: List of bug IDs of similar bugs
+            List[str] or List[Dict[str, Any]]: Similar bug identifiers (optionally with scores)
         """
         logger.info(f"🔍 Starting similarity search with embedding dimension: {len(query_embedding)}")
         logger.info(f"📊 Search filters: type='{bug_type}', product='{product}', component='{component}'")
@@ -84,59 +86,59 @@ class BugReportRetriever:
         
         # Strategy 1: Search with all three filters (type, product, component)
         logger.info("🔍 Strategy 1: Searching with ALL filters (type + product + component)")
-        bug_ids = self._search_with_filters(
+        candidates = self._search_with_filters(
             query_embedding, 
             {"type": bug_type, "product": product, "component": component},
             top_k
         )
         
-        if len(bug_ids) >= min_results:
-            logger.info(f"✅ Strategy 1 SUCCESS: Found {len(bug_ids)} results with all filters")
-            return bug_ids
+        if len(candidates) >= min_results:
+            logger.info(f"✅ Strategy 1 SUCCESS: Found {len(candidates)} results with all filters")
+            return self._maybe_return_candidates(candidates, return_scores)
         
-        logger.warning(f"⚠️ Strategy 1 INSUFFICIENT: Only found {len(bug_ids)} results with all filters, dropping 'type' filter")
+        logger.warning(f"⚠️ Strategy 1 INSUFFICIENT: Only found {len(candidates)} results with all filters, dropping 'type' filter")
         
         # Strategy 2: Drop 'type' filter, keep product and component
         logger.info("🔍 Strategy 2: Searching without 'type' filter (product + component only)")
-        bug_ids = self._search_with_filters(
+        candidates = self._search_with_filters(
             query_embedding,
             {"product": product, "component": component},
             top_k
         )
         
-        if len(bug_ids) >= min_results:
-            logger.info(f"✅ Strategy 2 SUCCESS: Found {len(bug_ids)} results without 'type' filter")
-            return bug_ids
+        if len(candidates) >= min_results:
+            logger.info(f"✅ Strategy 2 SUCCESS: Found {len(candidates)} results without 'type' filter")
+            return self._maybe_return_candidates(candidates, return_scores)
         
-        logger.warning(f"⚠️ Strategy 2 INSUFFICIENT: Only found {len(bug_ids)} results without 'type' filter, dropping 'component' filter")
+        logger.warning(f"⚠️ Strategy 2 INSUFFICIENT: Only found {len(candidates)} results without 'type' filter, dropping 'component' filter")
         
         # Strategy 3: Keep only 'product' filter (most important)
         logger.info("🔍 Strategy 3: Searching with ONLY 'product' filter")
-        bug_ids = self._search_with_filters(
+        candidates = self._search_with_filters(
             query_embedding,
             {"product": product},
             top_k
         )
         
-        if len(bug_ids) > 0:
-            logger.info(f"✅ Strategy 3 SUCCESS: Found {len(bug_ids)} results with only 'product' filter")
+        if len(candidates) > 0:
+            logger.info(f"✅ Strategy 3 SUCCESS: Found {len(candidates)} results with only 'product' filter")
         else:
-            logger.error(f"❌ Strategy 3 FAILED: Found {len(bug_ids)} results even with minimal filtering!")
+            logger.error(f"❌ Strategy 3 FAILED: Found {len(candidates)} results even with minimal filtering!")
             
             # Emergency Strategy 4: Search with NO filters at all
             logger.info("🚨 Strategy 4: EMERGENCY search with NO filters")
-            bug_ids = self._search_with_filters(query_embedding, {}, top_k)
-            if len(bug_ids) > 0:
-                logger.warning(f"⚠️ Strategy 4: Found {len(bug_ids)} results with NO filters - metadata filtering issue!")
+            candidates = self._search_with_filters(query_embedding, {}, top_k)
+            if len(candidates) > 0:
+                logger.warning(f"⚠️ Strategy 4: Found {len(candidates)} results with NO filters - metadata filtering issue!")
             else:
                 logger.error(f"💀 Strategy 4 TOTAL FAILURE: No results even without filters - check embedding or index!")
         
-        return bug_ids
+        return self._maybe_return_candidates(candidates, return_scores)
     
     def _search_with_filters(self, 
                            query_embedding: List[float], 
                            filters: Dict[str, str], 
-                           top_k: int) -> List[str]:
+                           top_k: int) -> List[Dict[str, Any]]:
         """
         Execute a single search with given metadata filters
         
@@ -146,7 +148,7 @@ class BugReportRetriever:
             top_k (int): Number of results to return
             
         Returns:
-            List[str]: List of bug IDs
+            List[Dict[str, Any]]: List of bug IDs with similarity scores
         """
         try:
             # Prepare filter for Pinecone query
@@ -183,7 +185,7 @@ class BugReportRetriever:
             logger.info(f"📊 Pinecone returned {len(response.matches)} matches")
             
             # Extract bug IDs from the response
-            bug_ids = []
+            candidates: List[Dict[str, Any]] = []
             for i, match in enumerate(response.matches):
                 # The bug_id should be in the metadata
                 bug_id = match.metadata.get('bug_id')
@@ -196,11 +198,11 @@ class BugReportRetriever:
                     # Convert float bug IDs to integers for consistency
                     if isinstance(bug_id, (int, float)):
                         bug_id = str(int(float(bug_id)))
-                    bug_ids.append(bug_id)
+                    candidates.append({"bug_id": bug_id, "score": score})
                 else:
                     logger.warning(f"  ⚠️ Match {i+1} missing bug_id in metadata: {match.metadata}")
             
-            if not bug_ids:
+            if not candidates:
                 logger.warning(f"❌ No valid bug_ids extracted from {len(response.matches)} matches!")
                 if response.matches:
                     logger.info("🔍 Sample match metadata for debugging:")
@@ -208,12 +210,18 @@ class BugReportRetriever:
                         logger.info(f"  Match {i+1} metadata keys: {list(match.metadata.keys())}")
                         logger.info(f"  Match {i+1} metadata: {match.metadata}")
             
-            return bug_ids
+            return candidates
             
         except Exception as e:
             logger.error(f"❌ Error during Pinecone search: {str(e)}")
             logger.error(f"🔧 Query details - filters: {filters}, top_k: {top_k}")
             return []
+
+    @staticmethod
+    def _maybe_return_candidates(candidates: List[Dict[str, Any]], return_scores: bool) -> List[Any]:
+        if return_scores:
+            return candidates
+        return [item["bug_id"] for item in candidates]
     
     def get_bug_details(self, bug_ids: List[str]) -> List[Dict[str, Any]]:
         """

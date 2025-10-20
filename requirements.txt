@@ -6,3 +6,5 @@ pandas
 scikit-learn
 pinecone>=5.0.0
 python-dotenv
+ragas
+datasets

@@ -77,18 +77,18 @@ class RAGPipeline:
                 return {"error": "Failed to generate embedding"}
             
             # Step 4: Retrieve similar bugs using vector search
-            similar_bug_ids = self._retrieve_similar_bugs(query_embedding, bug_data)
+            similar_candidates = self._retrieve_similar_bugs(query_embedding, bug_data)
             
             # Step 5: Generate final report (placeholder for now)
-            report_path = self._generate_report(bug_data, similar_bug_ids)
+            report_path = self._generate_report(bug_data, similar_candidates)
             
             # Return results
             results = {
                 "status": "success",
                 "input_bug": bug_data,
                 "enhanced_text": enhanced_text,
-                "similar_bugs_count": len(similar_bug_ids),
-                "similar_bug_ids": similar_bug_ids,
+                "similar_bugs_count": len(similar_candidates),
+                "similar_bug_ids": [item["bug_id"] for item in similar_candidates],
                 "report_path": report_path
             }
             
@@ -190,7 +190,7 @@ class RAGPipeline:
             logger.error(f"❌ Failed to generate embedding: {str(e)}")
             return []
     
-    def _retrieve_similar_bugs(self, query_embedding: List[float], bug_data: Dict[str, Any]) -> List[str]:
+    def _retrieve_similar_bugs(self, query_embedding: List[float], bug_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Retrieve similar bugs using vector search with metadata filters
         
@@ -199,7 +199,7 @@ class RAGPipeline:
             bug_data (Dict[str, Any]): Bug metadata for filtering
             
         Returns:
-            List[str]: List of similar bug IDs
+            List[Dict[str, Any]]: Similar bug IDs with similarity scores
         """
         try:
             # Extract filter values and log them
@@ -212,16 +212,17 @@ class RAGPipeline:
             logger.info(f"   🏷️ Filters: type='{bug_type}', product='{product}', component='{component}'")
             logger.info(f"   🎯 Top-K: {Config.TOP_K_RESULTS}")
             
-            similar_bugs = self.retriever.retrieve_similar_bugs(
+            similar_candidates = self.retriever.retrieve_similar_bugs(
                 query_embedding=query_embedding,
                 bug_type=bug_type,
                 product=product,
                 component=component,
-                top_k=Config.TOP_K_RESULTS
+                top_k=Config.TOP_K_RESULTS,
+                return_scores=True,
             )
             
-            if similar_bugs:
-                logger.info(f"✅ Retrieved {len(similar_bugs)} similar bugs: {similar_bugs}")
+            if similar_candidates:
+                logger.info(f"✅ Retrieved {len(similar_candidates)} similar bugs: {similar_candidates}")
             else:
                 logger.error(f"❌ NO similar bugs found! This suggests an issue with:")
                 logger.error(f"   🔍 1. Pinecone index might be empty")
@@ -229,25 +230,25 @@ class RAGPipeline:
                 logger.error(f"   🔍 3. Embedding dimension mismatch")
                 logger.error(f"   🔍 4. Index connection issues")
             
-            return similar_bugs
+            return similar_candidates
             
         except Exception as e:
             logger.error(f"❌ Failed to retrieve similar bugs: {str(e)}")
             return []
     
-    def _generate_report(self, bug_data: Dict[str, Any], similar_bug_ids: List[str]) -> str:
+    def _generate_report(self, bug_data: Dict[str, Any], similar_candidates: List[Dict[str, Any]]) -> str:
         """
         Generate final report using LLM
         
         Args:
             bug_data (Dict[str, Any]): Original bug data
-            similar_bug_ids (List[str]): IDs of similar bugs
+            similar_candidates (List[Dict[str, Any]]): Ranked similar bugs with scores
             
         Returns:
             str: Path to generated report file
         """
         try:
-            report_path = generate_report(bug_data, similar_bug_ids)
+            report_path = generate_report(bug_data, similar_candidates)
             logger.info("Generated LLM-backed report: %s", report_path)
             return report_path
         except Exception as e:

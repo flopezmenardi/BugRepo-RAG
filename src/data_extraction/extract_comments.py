@@ -1,3 +1,4 @@
+import argparse
 import csv
 import os
 import time
@@ -13,14 +14,14 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, os.pardir, os.pardir))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 
-INPUT_CSV = os.path.join(DATA_DIR, "bugs_since.csv")
-OUTPUT_COMMENTS = os.path.join(DATA_DIR, "bugs_comments.csv")
+DEFAULT_INPUT_CSV = os.path.join(DATA_DIR, "bugs_since.csv")
+DEFAULT_OUTPUT_COMMENTS = os.path.join(DATA_DIR, "bugs_comments.csv")
 
 # Tuning
 RATE_LIMIT = 0.0        # per-request sleep in main loop; concurrency handles throughput
-TEST_LIMIT = 40000
-START_OFFSET = 10000
-APPEND_MODE = True
+DEFAULT_TEST_LIMIT = 40000
+DEFAULT_START_OFFSET = 0
+DEFAULT_APPEND_MODE = True
 MAX_WORKERS = 16        
 TIMEOUT = 60
 HEADERS = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -51,7 +52,13 @@ def fetch_bug_comments(session: requests.Session, bug_id: int):
     url = f"{BASE_URL}/bug/{bug_id}/comment"
     r = session.get(url, timeout=TIMEOUT)
     r.raise_for_status()
-    data = r.json()
+    try:
+        data = r.json()
+    except ValueError as exc:
+        text_preview = (r.text or "").strip()
+        preview = text_preview[:200] + ("..." if len(text_preview) > 200 else "")
+        print(f"[bug {bug_id}] Failed to decode JSON: {exc} | response preview: {preview!r}")
+        return []
     bucket = (data.get("bugs") or {}).get(str(bug_id)) or {}
     comments = bucket.get("comments", [])
     rows = []
@@ -64,19 +71,25 @@ def fetch_bug_comments(session: requests.Session, bug_id: int):
         ])
     return rows
 
-def main():
+def main(
+    input_csv: str = DEFAULT_INPUT_CSV,
+    output_comments: str = DEFAULT_OUTPUT_COMMENTS,
+    append_mode: bool = DEFAULT_APPEND_MODE,
+    start_offset: int = DEFAULT_START_OFFSET,
+    test_limit: int = DEFAULT_TEST_LIMIT,
+):
     # Determine file mode + header behavior
-    file_mode = "a" if APPEND_MODE else "w"
-    write_header = not APPEND_MODE
-    if APPEND_MODE:
+    file_mode = "a" if append_mode else "w"
+    write_header = not append_mode
+    if append_mode:
         try:
-            with open(OUTPUT_COMMENTS, "r", encoding="utf-8") as f:
+            with open(output_comments, "r", encoding="utf-8") as f:
                 write_header = not bool(f.readline().strip())
         except FileNotFoundError:
             write_header = True
 
-    with open(INPUT_CSV, newline="", encoding="utf-8") as infile, \
-         open(OUTPUT_COMMENTS, mode=file_mode, newline="", encoding="utf-8") as outcsv:
+    with open(input_csv, newline="", encoding="utf-8") as infile, \
+         open(output_comments, mode=file_mode, newline="", encoding="utf-8") as outcsv:
 
         reader = csv.reader(infile)
         writer = csv.writer(outcsv)
@@ -88,18 +101,18 @@ def main():
             writer.writerow(["bug_id", "comment_id", "creation_time", "text"])
 
         # Skip offset safely
-        for _ in range(START_OFFSET):
+        for _ in range(start_offset):
             try:
                 next(reader)
             except StopIteration:
                 print("Reached EOF while skipping; nothing to do.")
                 return
-        print(f"Skipped first {START_OFFSET} bugs")
+        print(f"Skipped first {start_offset} bugs")
 
         # Collect target bug IDs (respect TEST_LIMIT)
         bug_ids = []
         for row in reader:
-            if TEST_LIMIT and len(bug_ids) >= TEST_LIMIT:
+            if test_limit and len(bug_ids) >= test_limit:
                 break
             if row and row[0].isdigit():
                 bug_ids.append(int(row[0]))
@@ -147,4 +160,41 @@ def main():
               f"Elapsed {elapsed:.1f}s (~{elapsed/max(submitted,1):.3f}s/bug)")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Download Bugzilla comments for a set of bug IDs.")
+    parser.add_argument(
+        "--input-csv",
+        default=DEFAULT_INPUT_CSV,
+        help="Path to the CSV containing bug IDs (default: data/bugs_since.csv).",
+    )
+    parser.add_argument(
+        "--output-csv",
+        default=DEFAULT_OUTPUT_COMMENTS,
+        help="Destination CSV for comments (default: data/bugs_comments.csv).",
+    )
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        default=DEFAULT_APPEND_MODE,
+        help="Append to the output file instead of overwriting.",
+    )
+    parser.add_argument(
+        "--start-offset",
+        type=int,
+        default=DEFAULT_START_OFFSET,
+        help="Number of initial bug rows to skip before processing.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_TEST_LIMIT,
+        help="Maximum number of bugs to fetch comments for (0 = no limit).",
+    )
+    args = parser.parse_args()
+
+    main(
+        input_csv=args.input_csv,
+        output_comments=args.output_csv,
+        append_mode=args.append,
+        start_offset=args.start_offset,
+        test_limit=args.limit,
+    )
