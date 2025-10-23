@@ -159,7 +159,7 @@ def prepare_evaluation_entries(
         try:
             similar_candidates = retriever.retrieve_similar_bugs(
                 query_embedding=query_embedding,
-                bug_type=bug_payload.get("type", ""),
+                classification=bug_payload.get("classification", ""),
                 product=bug_payload.get("product", ""),
                 component=bug_payload.get("component", ""),
                 top_k=max(top_k_contexts, Config.TOP_K_RESULTS),

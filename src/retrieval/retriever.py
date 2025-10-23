@@ -52,30 +52,30 @@ class BugReportRetriever:
     
     def retrieve_similar_bugs(self, 
                             query_embedding: List[float], 
-                            bug_type: str, 
+                            classification: str, 
                             product: str, 
                             component: str,
-                            top_k: int = 10,
-                            min_results: int = 3,
+                            top_k: int = 5,
+                            score_threshold: float = 0.75,
                             return_scores: bool = False) -> List[Any]:
         """
-        Retrieve similar bug reports using cascading metadata filters
+        Retrieve similar bug reports using cascading metadata filters with score-based fallback
         
         Args:
             query_embedding (List[float]): The embedding vector of the enhanced bug query
-            bug_type (str): Bug type filter (e.g., "defect", "enhancement")
-            product (str): Product filter (e.g., "Firefox", "Thunderbird") - always required
+            classification (str): Classification filter (e.g., "Components", "Client Software")
+            product (str): Product filter (e.g., "Firefox", "Core") - always required
             component (str): Component filter (e.g., "General", "Security")
-            top_k (int): Maximum number of results to return
-            min_results (int): Minimum results needed before dropping filters
+            top_k (int): Maximum number of results to return (default 5)
+            score_threshold (float): Minimum score threshold for keeping results (default 0.75)
             return_scores (bool): If True, include similarity scores alongside bug IDs
             
         Returns:
             List[str] or List[Dict[str, Any]]: Similar bug identifiers (optionally with scores)
         """
         logger.info(f"🔍 Starting similarity search with embedding dimension: {len(query_embedding)}")
-        logger.info(f"📊 Search filters: type='{bug_type}', product='{product}', component='{component}'")
-        logger.info(f"🎯 Search parameters: top_k={top_k}, min_results={min_results}")
+        logger.info(f"📊 Search filters: classification='{classification}', product='{product}', component='{component}'")
+        logger.info(f"🎯 Search parameters: top_k={top_k}, score_threshold={score_threshold}")
         
         # First, let's check index stats
         try:
@@ -84,56 +84,106 @@ class BugReportRetriever:
         except Exception as e:
             logger.error(f"❌ Failed to get index stats: {str(e)}")
         
-        # Strategy 1: Search with all three filters (type, product, component)
-        logger.info("🔍 Strategy 1: Searching with ALL filters (type + product + component)")
-        candidates = self._search_with_filters(
+        # Strategy 1: Search with all three filters (classification, product, component)
+        logger.info("🔍 Strategy 1: Searching with ALL filters (classification + product + component)")
+        strategy1_candidates = self._search_with_filters(
             query_embedding, 
-            {"type": bug_type, "product": product, "component": component},
+            {"classification": classification, "product": product, "component": component},
             top_k
         )
         
-        if len(candidates) >= min_results:
-            logger.info(f"✅ Strategy 1 SUCCESS: Found {len(candidates)} results with all filters")
-            return self._maybe_return_candidates(candidates, return_scores)
+        # Check if we have good quality results from Strategy 1
+        final_candidates = []
+        high_quality_from_s1 = [c for c in strategy1_candidates if c["score"] >= score_threshold]
+        low_quality_from_s1 = [c for c in strategy1_candidates if c["score"] < score_threshold]
         
-        logger.warning(f"⚠️ Strategy 1 INSUFFICIENT: Only found {len(candidates)} results with all filters, dropping 'type' filter")
+        logger.info(f"📊 Strategy 1 results: {len(strategy1_candidates)} total, {len(high_quality_from_s1)} above threshold")
         
-        # Strategy 2: Drop 'type' filter, keep product and component
-        logger.info("🔍 Strategy 2: Searching without 'type' filter (product + component only)")
-        candidates = self._search_with_filters(
-            query_embedding,
-            {"product": product, "component": component},
-            top_k
-        )
-        
-        if len(candidates) >= min_results:
-            logger.info(f"✅ Strategy 2 SUCCESS: Found {len(candidates)} results without 'type' filter")
-            return self._maybe_return_candidates(candidates, return_scores)
-        
-        logger.warning(f"⚠️ Strategy 2 INSUFFICIENT: Only found {len(candidates)} results without 'type' filter, dropping 'component' filter")
-        
-        # Strategy 3: Keep only 'product' filter (most important)
-        logger.info("🔍 Strategy 3: Searching with ONLY 'product' filter")
-        candidates = self._search_with_filters(
-            query_embedding,
-            {"product": product},
-            top_k
-        )
-        
-        if len(candidates) > 0:
-            logger.info(f"✅ Strategy 3 SUCCESS: Found {len(candidates)} results with only 'product' filter")
+        if len(high_quality_from_s1) >= top_k:
+            # We have enough high-quality results from the most specific search
+            final_candidates = high_quality_from_s1[:top_k]
+            logger.info(f"✅ Strategy 1 SUCCESS: Found {len(final_candidates)} high-quality results with all filters")
         else:
-            logger.error(f"❌ Strategy 3 FAILED: Found {len(candidates)} results even with minimal filtering!")
+            # Add all high-quality results from Strategy 1 first (they have priority)
+            final_candidates.extend(high_quality_from_s1)
+            needed = top_k - len(final_candidates)
+            logger.info(f"⚠️ Strategy 1 PARTIAL: Only {len(high_quality_from_s1)} high-quality results, need {needed} more")
             
-            # Emergency Strategy 4: Search with NO filters at all
-            logger.info("🚨 Strategy 4: EMERGENCY search with NO filters")
-            candidates = self._search_with_filters(query_embedding, {}, top_k)
-            if len(candidates) > 0:
-                logger.warning(f"⚠️ Strategy 4: Found {len(candidates)} results with NO filters - metadata filtering issue!")
-            else:
-                logger.error(f"💀 Strategy 4 TOTAL FAILURE: No results even without filters - check embedding or index!")
+            if needed > 0:
+                # Strategy 2: Search with classification + product only
+                logger.info("🔍 Strategy 2: Searching with classification + product only")
+                strategy2_candidates = self._search_with_filters(
+                    query_embedding,
+                    {"classification": classification, "product": product},
+                    top_k * 2  # Get more candidates to filter from
+                )
+                
+                # Filter out candidates we already have and get high-quality ones
+                existing_ids = {c["bug_id"] for c in final_candidates}
+                new_high_quality = [c for c in strategy2_candidates 
+                                  if c["bug_id"] not in existing_ids and c["score"] >= score_threshold]
+                
+                # Add top scoring candidates from Strategy 2 to fill remaining slots
+                strategy2_added = new_high_quality[:needed]
+                final_candidates.extend(strategy2_added)
+                needed -= len(strategy2_added)
+                
+                logger.info(f"📊 Strategy 2: Added {len(strategy2_added)} high-quality results")
+                
+                if needed > 0:
+                    # Strategy 3: Search with product only
+                    logger.info("🔍 Strategy 3: Searching with product only")
+                    strategy3_candidates = self._search_with_filters(
+                        query_embedding,
+                        {"product": product},
+                        top_k * 2  # Get more candidates to filter from
+                    )
+                    
+                    # Filter out candidates we already have and get high-quality ones
+                    existing_ids = {c["bug_id"] for c in final_candidates}
+                    new_high_quality = [c for c in strategy3_candidates 
+                                      if c["bug_id"] not in existing_ids and c["score"] >= score_threshold]
+                    
+                    # Add top scoring candidates from Strategy 3 to fill remaining slots
+                    strategy3_added = new_high_quality[:needed]
+                    final_candidates.extend(strategy3_added)
+                    needed -= len(strategy3_added)
+                    
+                    logger.info(f"📊 Strategy 3: Added {len(strategy3_added)} high-quality results")
+                    
+                    # If we still don't have enough high-quality results, fill with lower quality ones
+                    if needed > 0:
+                        logger.warning(f"⚠️ Only found {len(final_candidates)} high-quality results, filling with lower-scoring ones")
+                        
+                        # Collect all low-quality candidates from all strategies
+                        all_low_quality = []
+                        existing_ids = {c["bug_id"] for c in final_candidates}
+                        
+                        # Low quality from Strategy 1 (highest priority)
+                        all_low_quality.extend([c for c in low_quality_from_s1 if c["bug_id"] not in existing_ids])
+                        
+                        # Low quality from Strategy 2
+                        strategy2_low = [c for c in strategy2_candidates 
+                                       if c["bug_id"] not in existing_ids and c["score"] < score_threshold]
+                        all_low_quality.extend(strategy2_low)
+                        
+                        # Low quality from Strategy 3
+                        strategy3_low = [c for c in strategy3_candidates 
+                                       if c["bug_id"] not in existing_ids and c["score"] < score_threshold]
+                        all_low_quality.extend(strategy3_low)
+                        
+                        # Sort by score and take the best low-quality ones
+                        all_low_quality.sort(key=lambda x: x["score"], reverse=True)
+                        final_candidates.extend(all_low_quality[:needed])
         
-        return self._maybe_return_candidates(candidates, return_scores)
+        # Sort final candidates by score for consistency
+        final_candidates.sort(key=lambda x: x["score"], reverse=True)
+        
+        logger.info(f"🎯 Final results: {len(final_candidates)} bugs retrieved")
+        for i, candidate in enumerate(final_candidates, 1):
+            logger.info(f"  📋 Result {i}: bug_id='{candidate['bug_id']}', score={candidate['score']:.4f}")
+        
+        return self._maybe_return_candidates(final_candidates, return_scores)
     
     def _search_with_filters(self, 
                            query_embedding: List[float], 
@@ -290,7 +340,7 @@ def main():
         # Test the retrieval
         similar_bugs = retriever.retrieve_similar_bugs(
             query_embedding=test_embedding,
-            bug_type="defect",
+            classification="Components",
             product="Firefox", 
             component="General"
         )
