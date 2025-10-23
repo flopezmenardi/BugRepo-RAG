@@ -254,7 +254,13 @@ class RAGPipeline:
                 if item and str(item.get("bug_id") or "").strip()
             ]
 
-            report_path = generate_report(bug_data, candidate_ids)
+            result = generate_report(bug_data, candidate_ids)
+            # generate_report was updated to return (report_path, prompt_messages)
+            # for backward compatibility accept either a string or a tuple/list.
+            if isinstance(result, (tuple, list)):
+                report_path = result[0]
+            else:
+                report_path = result
             logger.info("Generated LLM-backed report: %s", report_path)
             return report_path
         except Exception as e:

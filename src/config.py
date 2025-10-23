@@ -35,7 +35,7 @@ class Config:
     
     # LLM Configuration
     LLM_MODEL = "gpt-3.5-turbo"
-    LLM_TEMPERATURE = 0.7
+    LLM_TEMPERATURE = 0.1
     MAX_TOKENS = 1500
     
     @classmethod
