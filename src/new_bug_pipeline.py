@@ -203,18 +203,18 @@ class RAGPipeline:
         """
         try:
             # Extract filter values and log them
-            bug_type = bug_data.get('type', '')
+            classification = bug_data.get('classification', '')
             product = bug_data.get('product', '')
             component = bug_data.get('component', '')
             
             logger.info(f"🔍 Preparing retrieval with:")
             logger.info(f"   📊 Embedding: {len(query_embedding)} dimensions")
-            logger.info(f"   🏷️ Filters: type='{bug_type}', product='{product}', component='{component}'")
+            logger.info(f"   🏷️ Filters: classification='{classification}', product='{product}', component='{component}'")
             logger.info(f"   🎯 Top-K: {Config.TOP_K_RESULTS}")
             
             similar_candidates = self.retriever.retrieve_similar_bugs(
                 query_embedding=query_embedding,
-                bug_type=bug_type,
+                classification=classification,
                 product=product,
                 component=component,
                 top_k=Config.TOP_K_RESULTS,
