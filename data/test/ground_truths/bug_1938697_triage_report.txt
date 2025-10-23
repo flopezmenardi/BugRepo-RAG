@@ -1,0 +1,28 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938697
+Product/Component: Firefox / Tabbed Browser
+Status: REOPENED
+Created: 2024-12-21 00:13 UTC
+Summary: Intermittent browser/components/tabbrowser/test/browser/tabs/browser_tab_manager_groups.js | single tracking bug
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S4
+- Classification: Client Software
+- Platform: Desktop
+
+ROOT CAUSE ANALYSIS
+- Race in tab group state updates (observers vs async tasks); inconsistent paint/flush ordering.
+- Modules: tabbrowser, sessionstore interactions, BrowserTestUtils utilities.
+- Intermittent suggests race/timing or precision tolerance issues; stabilize with deterministic prefs and explicit waits.
+
+TRIAGE RECOMMENDATIONS
+1) Tag with 'intermittent-failure'; collect logs and screenshot diffs where applicable.
+2) Add explicit waits for loads/layout flushes; fix DPR and enable deterministic prefs in test.
+3) Reduce flakiness by replacing visual assertions with DOM/geometry checks when possible.
+4) Avoid reliance on timers; await tab group observers/promises; add logging for state transitions.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

@@ -1,0 +1,27 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938711
+Product/Component: Core / Panning and Zooming
+Status: RESOLVED | Resolution: INCOMPLETE
+Created: 2024-12-21 04:57 UTC
+Summary: Intermittent gfx/layers/apz/test/mochitest/test_group_double_tap_zoom-2.html | single tracking bug
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S4
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- APZ timing/gesture detection instability; device scale and double-tap thresholds vary.
+- Modules: APZ controller, async pan/zoom state machine.
+- Intermittent suggests race/timing or precision tolerance issues; stabilize with deterministic prefs and explicit waits.
+
+TRIAGE RECOMMENDATIONS
+1) Tag with 'intermittent-failure'; collect logs and screenshot diffs where applicable.
+2) Add explicit waits for loads/layout flushes; fix DPR and enable deterministic prefs in test.
+3) Reduce flakiness by replacing visual assertions with DOM/geometry checks when possible.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

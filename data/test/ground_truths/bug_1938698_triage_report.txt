@@ -1,0 +1,28 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938698
+Product/Component: Core / XPCOM
+Status: RESOLVED | Resolution: INCOMPLETE
+Created: 2024-12-21 00:24 UTC
+Summary: Intermittent LeakSanitizer | leak at nsTimer, nsTimer::WithEventTarget, NS_NewTimerWithCallback, NS_NewTimerWithCallback
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S4
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- LeakSanitizer indicates reference cycle or timer not cancelled; event targets retaining timers.
+- Modules: nsTimer, event target plumbing, shutdown ordering.
+- Intermittent suggests race/timing or precision tolerance issues; stabilize with deterministic prefs and explicit waits.
+
+TRIAGE RECOMMENDATIONS
+1) Tag with 'intermittent-failure'; collect logs and screenshot diffs where applicable.
+2) Add explicit waits for loads/layout flushes; fix DPR and enable deterministic prefs in test.
+3) Reduce flakiness by replacing visual assertions with DOM/geometry checks when possible.
+4) Add leak logging on nsTimer destruction; audit cancellation paths and event target ownership.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

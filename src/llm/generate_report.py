@@ -82,7 +82,10 @@ class BugReportGenerator:
             output_dir=output_dir,
         )
 
-        return str(report_path)
+        # Return both the report path and the prompt messages used to build it.
+        # The caller may want to inspect the prompt (system+user) as the
+        # canonical question text for evaluation.
+        return str(report_path), prompt
 
     def _fetch_context(self, similar_bug_ids: List[str]) -> List[Dict[str, Any]]:
         """Retrieve metadata for similar bugs from the original CSV data."""
@@ -295,6 +298,17 @@ class BugReportGenerator:
             "- Basic metadata (priority, severity, status, etc.)\n"
             "- Recent comments from developers/users that may contain technical details\n"
             "- Information about related bugs that this bug blocks or is blocked by\n\n"
+            "**FIELD INFERENCE RULES (use contexts first)**\n"
+            "- Derive Priority/Severity by MAJORITY VOTE over retrieved similar bugs:\n"
+            "  - Compute the most frequent value among context items for each field.\n"
+            "  - If a value appears in ≥60% of similar bugs, USE THAT VALUE.\n"
+            "  - Break ties by preferring: (1) same component/product, (2) most recent, (3) higher evidence density (more technical comments).\n"
+            "- If no majority:\n"
+            "  - If the new bug’s summary contains “Intermittent” or “single tracking bug” or the component is Talos/mochitest/reftest/APZ, set Priority=P5 and Severity=S4.\n"
+            "  - Otherwise, output **Unknown** (do not guess).\n"
+            "- Classification & Platform: majority vote; if absent, inherit from the new bug’s own metadata; else **Unknown**.\n"
+            "- Always cite the context IDs supporting your choices, e.g., “Priority=P5 (C1,C3,C5)”.\n"
+            "- Do not up-rank without explicit supporting contexts.\n\n"
             "Use this rich context to make informed predictions and provide detailed technical analysis."
         )
 

@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938744
+Product/Component: Core / JavaScript Engine: JIT
+Status: RESOLVED | Resolution: FIXED
+Created: 2024-12-21 07:42 UTC
+Summary: [mips64] Hit MOZ_CRASH() at js/src/jit/mips64/Simulator-mips64.cpp:1673
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S4
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Architecture-specific assertion/crash in JIT; incorrect guards or simulator behavior on loong64/mips64.
+- Modules: WarpOracle / backend simulators; resource exhaustion paths.
+
+TRIAGE RECOMMENDATIONS
+4) Add architecture-specific jit-tests; verify simulator parity; check recent WarpOracle/backend patches.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

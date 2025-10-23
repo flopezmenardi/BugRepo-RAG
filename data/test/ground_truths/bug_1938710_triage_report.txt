@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938710
+Product/Component: Core / Graphics: WebGPU
+Status: RESOLVED | Resolution: FIXED
+Created: 2024-12-21 04:38 UTC
+Summary: [webgpu] https://huggingface.co/spaces/webml-community/remove-background-webgpu appears to be slow around FXC
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S3
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Performance regression around FXC path (D3D shader compiler) or pipeline cache; shader translation cost.
+- Modules: WebGPU backend, shader caching, DX12 adapter selection.
+
+TRIAGE RECOMMENDATIONS
+4) Profile FXC shader compile path; validate pipeline cache; consider toggling DXC vs FXC.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

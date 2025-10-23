@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938702
+Product/Component: Core / DOM: Core & HTML
+Status: RESOLVED | Resolution: FIXED
+Created: 2024-12-21 00:57 UTC
+Summary: [wpt-sync] Sync PR 49815 - [Reland] Handle appearance value changes during <select> showPicker.
+
+FIELD PREDICTIONS
+- Priority: P4
+- Severity: S3
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Sandbox navigation policy handling across same-origin grandchild iframes; feature policy/sandbox flags interplay.
+- Modules: docshell/navigation, window.open/top navigation restrictions.
+
+TRIAGE RECOMMENDATIONS
+4) Add tests for sandbox flag combinations and top-navigation; confirm policy per spec.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

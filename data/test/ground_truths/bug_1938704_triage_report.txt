@@ -1,0 +1,28 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938704
+Product/Component: Core / DOM: Navigation
+Status: RESOLVED | Resolution: INCOMPLETE
+Created: 2024-12-21 01:05 UTC
+Summary: Intermittent docshell/test/browser/browser_replace_state_during_navigation_from_first_page.js | single tracking bug
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S4
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- replaceState during early navigation causing history entries mismatch; race between load events and history updates.
+- Modules: SessionHistory, docshell, bfcache interactions.
+- Intermittent suggests race/timing or precision tolerance issues; stabilize with deterministic prefs and explicit waits.
+
+TRIAGE RECOMMENDATIONS
+1) Tag with 'intermittent-failure'; collect logs and screenshot diffs where applicable.
+2) Add explicit waits for loads/layout flushes; fix DPR and enable deterministic prefs in test.
+3) Reduce flakiness by replacing visual assertions with DOM/geometry checks when possible.
+4) Synchronize replaceState with navigation lifecycle; write mochitest to assert history length.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

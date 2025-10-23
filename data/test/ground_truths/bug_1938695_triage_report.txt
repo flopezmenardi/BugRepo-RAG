@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938695
+Product/Component: Core / Layout: Images, Video, and HTML Frames
+Status: NEW
+Created: 2024-12-21 00:02 UTC
+Summary: min-height and max-height clamps aren't applied to specified 'height', when resolving min-content width of replaced element
+
+FIELD PREDICTIONS
+- Priority: P3
+- Severity: S3
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Likely ordering issue applying min/max block-size clamps before intrinsic sizing of replaced elements.
+- Modules: layout reflow pipeline, intrinsic size for replaced elements, aspect-ratio resolution.
+
+TRIAGE RECOMMENDATIONS
+4) Create reduced testcase with replaced element + min/max clamps; verify spec conformance (CSS Sizing).
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938707
+Product/Component: Firefox / Tabbed Browser
+Status: RESOLVED | Resolution: FIXED
+Created: 2024-12-21 02:28 UTC
+Summary: Firefox Nightly container tab coloring, vertical tabs don't show black
+
+FIELD PREDICTIONS
+- Priority: P2
+- Severity: S3
+- Classification: Client Software
+- Platform: Desktop
+
+ROOT CAUSE ANALYSIS
+- Race in tab group state updates (observers vs async tasks); inconsistent paint/flush ordering.
+- Modules: tabbrowser, sessionstore interactions, BrowserTestUtils utilities.
+
+TRIAGE RECOMMENDATIONS
+4) Avoid reliance on timers; await tab group observers/promises; add logging for state transitions.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

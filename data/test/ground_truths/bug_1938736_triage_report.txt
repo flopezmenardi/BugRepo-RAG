@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938736
+Product/Component: Testing / mozperftest
+Status: NEW
+Created: 2024-12-21 06:42 UTC
+Summary: Add more complex background resource usage tests for Fenix in CI
+
+FIELD PREDICTIONS
+- Priority: P2
+- Severity: S3
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Need more representative background resource scenarios for Fenix; CI stability and metrics coverage.
+- Modules: mozperftest scenarios, Android background limits, job orchestration.
+
+TRIAGE RECOMMENDATIONS
+4) Design scenarios simulating Android background constraints; integrate with CI metrics dashboards.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.

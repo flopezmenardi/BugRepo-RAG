@@ -1,0 +1,24 @@
+BUG TRIAGE REPORT
+------------------
+Bug ID: 1938712
+Product/Component: Core / Privacy: Anti-Tracking
+Status: RESOLVED | Resolution: FIXED
+Created: 2024-12-21 05:21 UTC
+Summary: Cleanup maybeSubmitPing from CF Turnstile
+
+FIELD PREDICTIONS
+- Priority: P5
+- Severity: S3
+- Classification: Components
+- Platform: All
+
+ROOT CAUSE ANALYSIS
+- Cleanup in telemetry/anti-tracking pings; risk of missing ping submissions during page teardown.
+- Modules: ping submission scheduler, Turnstile integration points.
+
+TRIAGE RECOMMENDATIONS
+4) Ensure ping submission on teardown; add telemetry to detect drops.
+
+NOTES
+- Predictions are heuristic based on component, product, and summary patterns (e.g., intermittent tests vs. user-visible regressions).
+- Revisit Priority/Severity once a reproducer/impact is confirmed.
