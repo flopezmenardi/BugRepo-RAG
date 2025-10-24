@@ -18,7 +18,7 @@ DEFAULT_INPUT_CSV = os.path.join(DATA_DIR, "bugs_since.csv")
 DEFAULT_OUTPUT_COMMENTS = os.path.join(DATA_DIR, "bugs_comments.csv")
 
 # Tuning
-RATE_LIMIT = 0.0        # per-request sleep in main loop; concurrency handles throughput
+RATE_LIMIT = 0.0        
 DEFAULT_TEST_LIMIT = 40000
 DEFAULT_START_OFFSET = 0
 DEFAULT_APPEND_MODE = True
@@ -131,7 +131,6 @@ def main(
             future_to_bug = {ex.submit(fetch_bug_comments, session, bid): bid for bid in bug_ids}
             submitted = len(future_to_bug)
 
-            # Consume as they complete; write rows in main thread
             for idx, fut in enumerate(as_completed(future_to_bug), 1):
                 bid = future_to_bug[fut]
                 try:

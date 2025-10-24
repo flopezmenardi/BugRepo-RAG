@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 class Config:
@@ -29,8 +28,7 @@ class Config:
     # Text Processing
     CHUNK_SIZE = 1000  # Characters per chunk
     CHUNK_OVERLAP = 200  # Overlap between chunks
-    
-    # Retrieval Configuration
+
     TOP_K_RESULTS = 5  # Number of similar bugs to retrieve
     
     # LLM Configuration

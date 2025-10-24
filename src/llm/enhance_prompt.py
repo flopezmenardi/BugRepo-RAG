@@ -57,14 +57,11 @@ def reformulate_bug_query(user_query: str) -> str:
         str: Reformulated query optimized for vector search, or "NON-BUG" if not bug-related
     """
     try:
-        # Initialize OpenAI client
         client = OpenAI(api_key=Config.OPENAI_API_KEY)
-        
-        # Get prompt template and format it
+
         prompt_template = get_bug_query_reformulation_prompt()
         formatted_prompt = prompt_template.format(user_question=user_query)
-        
-        # Make LLM call
+
         response = client.chat.completions.create(
             model=Config.LLM_MODEL,
             messages=[
@@ -73,8 +70,7 @@ def reformulate_bug_query(user_query: str) -> str:
             temperature=Config.LLM_TEMPERATURE,
             max_tokens=Config.MAX_TOKENS
         )
-        
-        # Extract response
+
         if response.choices and response.choices[0].message.content:
             reformulated = response.choices[0].message.content.strip()
             logger.info(f"Query reformulated: '{user_query}' -> '{reformulated}'")

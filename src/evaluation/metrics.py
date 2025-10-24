@@ -36,7 +36,7 @@ except ImportError as exc:
         "`pip install ragas datasets`."
     ) from exc
 
-# Project path bootstrap
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -49,7 +49,7 @@ from src.retrieval.retriever import BugReportRetriever
 
 logger = logging.getLogger(__name__)
 
-# Test dataset paths
+
 TEST_DATA_DIR = Config.DATA_DIR / "test"
 TEST_BUGS_CSV = TEST_DATA_DIR / "test_bugs.csv"
 TEST_COMMENTS_CSV = TEST_DATA_DIR / "test_bugs_comments.csv"
@@ -115,7 +115,6 @@ def load_ground_truth(path: Path) -> Dict[str, str]:
 # ---------------------------
 
 def build_bug_payload(row: Dict[str, str]) -> Dict[str, Any]:
-    # Prefer 'description' column if you later add it. Else fallback to summary.
     description = (row.get("description") or "").strip()
     if not description:
         description = (row.get("summary") or "").strip()
@@ -151,7 +150,7 @@ def prepare_evaluation_entries(
     top_k_contexts: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     if top_k_contexts is None:
-        top_k_contexts = 8  # a bit richer by default
+        top_k_contexts = 8 
 
     entries: List[Dict[str, Any]] = []
     for idx, row in enumerate(bug_rows, start=1):
@@ -163,14 +162,12 @@ def prepare_evaluation_entries(
 
         bug_payload = build_bug_payload(row)
 
-        # 1) Embed query
         try:
             query_embedding = embedder.embed_text(question)
         except Exception as exc:  # noqa: BLE001
             logger.error("Embedding failed for bug %s: %s", bug_id, exc)
             continue
 
-        # 2) Vector retrieval with filter relax
         try:
             similar_candidates = retriever.retrieve_similar_bugs(
                 query_embedding=query_embedding,
@@ -222,10 +219,8 @@ def prepare_evaluation_entries(
         reference_text = "\n".join(context_summaries)
 
         reports_dir = Config.OUTPUTS_DIR / "evaluation" / "reports"
-        # Build the full report file using the report generator and read it as the answer
         try:
             result = generate_report(bug_payload, candidate_ids, output_dir=reports_dir)
-            # generate_report now returns (report_path, prompt)
             if isinstance(result, tuple) or isinstance(result, list):
                 report_path, prompt_messages = result[0], result[1]
             else:
@@ -236,15 +231,11 @@ def prepare_evaluation_entries(
             answer_text = ""
             prompt_messages = None
 
-        # Prefer ground-truth reports when available (matching bug id)
         reference = ""
         if ground_truth_map and str(bug_id) in ground_truth_map:
             reference = ground_truth_map.get(str(bug_id), "")
 
-        # Use the prompt messages (system + user content) as the 'question'
-        # for evaluation if available; otherwise fall back to the bug summary.
         if prompt_messages and isinstance(prompt_messages, list):
-            # join system+user messages into a single string to serve as the prompt
             combined_prompt = "\n\n".join([m.get("content", "") for m in prompt_messages if m.get("content")])
         else:
             combined_prompt = question
@@ -294,9 +285,7 @@ def run_ragas_evaluation(entries: List[Dict[str, Any]]) -> Tuple[Dict[str, float
         ]
     )
 
-    # Use a set of metrics that includes reference-based and context-based
-    # measurements. `answer_relevancy` is a reference-based metric provided by
-    # ragas; normalize its name later to `answer_relevance` for output.
+    # `answer_relevancy` by ragas ->`answer_relevance` for output.
     metrics = [context_precision, faithfulness, answer_relevancy, context_recall]
     evaluation_result = evaluate(dataset=dataset, metrics=metrics)
 
@@ -305,7 +294,6 @@ def run_ragas_evaluation(entries: List[Dict[str, Any]]) -> Tuple[Dict[str, float
     per_sample_rows: List[Dict[str, Any]] = []
 
     metric_names = list(evaluation_result.scores[0].keys()) if evaluation_result.scores else []
-    # Compute overall and non-zero averages per metric
     for metric_name in metric_names:
         values = evaluation_result[metric_name]
         numeric_vals = [
@@ -319,7 +307,6 @@ def run_ragas_evaluation(entries: List[Dict[str, Any]]) -> Tuple[Dict[str, float
         non_zero_vals = [val for val in numeric_vals if val != 0.0]
         non_zero_scores[normalized] = (sum(non_zero_vals) / len(non_zero_vals)) if non_zero_vals else float("nan")
 
-    # Build per-sample rows that only contain the bug_id and the metric scores
     if evaluation_result.scores:
         for entry, scores in zip(entries, evaluation_result.scores):
             row = {"bug_id": entry.get("bug_id")}
@@ -379,7 +366,6 @@ def save_results(
                         fh.write("Reference:\n")
                         fh.write((entry.get("reference") or "") + "\n\n")
                         fh.write("Contexts:\n")
-                        # contexts may be list or string
                         contexts = entry.get("contexts") or []
                         if isinstance(contexts, (list, tuple)):
                             fh.write("\n".join(contexts))
@@ -432,14 +418,12 @@ def main(args: Optional[List[str]] = None) -> None:
         )
 
     bug_rows = load_bug_rows(bugs_csv_path, limit=cli_args.limit)
-    # Load ground truth mapping. For the `test` dataset we expect a directory
-    # with per-bug triage reports under data/test/ground_truths
+    # per-bug triage reports under data/test/ground_truths
     ground_truth_map = {}
     if cli_args.dataset == "test":
         gt_dir = TEST_DATA_DIR / "ground_truths"
         ground_truth_map = load_ground_truth(gt_dir)
     else:
-        # If a comments CSV is explicitly provided, keep previous behaviour (no mapping)
         ground_truth_map = load_ground_truth(comments_csv_path) if comments_csv_path.exists() else {}
 
     embedder = BugReportEmbedder()

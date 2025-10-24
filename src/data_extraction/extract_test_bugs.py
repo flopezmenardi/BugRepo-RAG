@@ -8,7 +8,7 @@ import requests
 BASE_URL = "https://bugzilla.mozilla.org/rest"
 OUTPUT_CSV = "test_bugs_2025_20.csv"
 START_DATE = "2025-01-01"
-LIMIT = 20  # default number of bugs to collect; adjust as needed
+LIMIT = 20  
 TIMEOUT = 60
 
 CSV_FIELDS = [

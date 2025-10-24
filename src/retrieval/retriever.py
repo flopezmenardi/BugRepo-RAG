@@ -4,13 +4,12 @@ import logging
 from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 
-# Add project root to path for imports
+
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import Config
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -26,12 +25,10 @@ class BugReportRetriever:
         Args:
             index_name (str): Name of the Pinecone index. Defaults to Config.PINECONE_INDEX_NAME
         """
-        # Validate configuration
+ 
         Config.validate_config()
         
         self.index_name = index_name or Config.PINECONE_INDEX_NAME
-        
-        # Initialize Pinecone
         self._init_pinecone()
         
         logger.info(f"Initialized BugReportRetriever for index: {self.index_name}")
@@ -39,10 +36,8 @@ class BugReportRetriever:
     def _init_pinecone(self):
         """Initialize Pinecone client and connect to existing index"""
         try:
-            # Initialize Pinecone client
             self.pc = Pinecone(api_key=Config.PINECONE_API_KEY)
-            
-            # Connect to the index
+
             self.index = self.pc.Index(self.index_name)
             logger.info(f"Connected to Pinecone index: {self.index_name}")
             
@@ -77,22 +72,20 @@ class BugReportRetriever:
         logger.info(f"📊 Search filters: classification='{classification}', product='{product}', component='{component}'")
         logger.info(f"🎯 Search parameters: top_k={top_k}, score_threshold={score_threshold}")
         
-        # First, let's check index stats
         try:
             stats = self.index.describe_index_stats()
             logger.info(f"📈 Index stats: {stats}")
         except Exception as e:
             logger.error(f"❌ Failed to get index stats: {str(e)}")
         
-        # Strategy 1: Search with all three filters (classification, product, component)
+
         logger.info("🔍 Strategy 1: Searching with ALL filters (classification + product + component)")
         strategy1_candidates = self._search_with_filters(
             query_embedding, 
             {"classification": classification, "product": product, "component": component},
             top_k
         )
-        
-        # Check if we have good quality results from Strategy 1
+
         final_candidates = []
         high_quality_from_s1 = [c for c in strategy1_candidates if c["score"] >= score_threshold]
         low_quality_from_s1 = [c for c in strategy1_candidates if c["score"] < score_threshold]
@@ -100,30 +93,25 @@ class BugReportRetriever:
         logger.info(f"📊 Strategy 1 results: {len(strategy1_candidates)} total, {len(high_quality_from_s1)} above threshold")
         
         if len(high_quality_from_s1) >= top_k:
-            # We have enough high-quality results from the most specific search
             final_candidates = high_quality_from_s1[:top_k]
             logger.info(f"✅ Strategy 1 SUCCESS: Found {len(final_candidates)} high-quality results with all filters")
         else:
-            # Add all high-quality results from Strategy 1 first (they have priority)
             final_candidates.extend(high_quality_from_s1)
             needed = top_k - len(final_candidates)
             logger.info(f"⚠️ Strategy 1 PARTIAL: Only {len(high_quality_from_s1)} high-quality results, need {needed} more")
             
             if needed > 0:
-                # Strategy 2: Search with classification + product only
                 logger.info("🔍 Strategy 2: Searching with classification + product only")
                 strategy2_candidates = self._search_with_filters(
                     query_embedding,
                     {"classification": classification, "product": product},
-                    top_k * 2  # Get more candidates to filter from
+                    top_k * 2  
                 )
-                
-                # Filter out candidates we already have and get high-quality ones
+
                 existing_ids = {c["bug_id"] for c in final_candidates}
                 new_high_quality = [c for c in strategy2_candidates 
                                   if c["bug_id"] not in existing_ids and c["score"] >= score_threshold]
-                
-                # Add top scoring candidates from Strategy 2 to fill remaining slots
+
                 strategy2_added = new_high_quality[:needed]
                 final_candidates.extend(strategy2_added)
                 needed -= len(strategy2_added)
@@ -131,52 +119,41 @@ class BugReportRetriever:
                 logger.info(f"📊 Strategy 2: Added {len(strategy2_added)} high-quality results")
                 
                 if needed > 0:
-                    # Strategy 3: Search with product only
                     logger.info("🔍 Strategy 3: Searching with product only")
                     strategy3_candidates = self._search_with_filters(
                         query_embedding,
                         {"product": product},
-                        top_k * 2  # Get more candidates to filter from
+                        top_k * 2 
                     )
-                    
-                    # Filter out candidates we already have and get high-quality ones
+
                     existing_ids = {c["bug_id"] for c in final_candidates}
                     new_high_quality = [c for c in strategy3_candidates 
                                       if c["bug_id"] not in existing_ids and c["score"] >= score_threshold]
-                    
-                    # Add top scoring candidates from Strategy 3 to fill remaining slots
+
                     strategy3_added = new_high_quality[:needed]
                     final_candidates.extend(strategy3_added)
                     needed -= len(strategy3_added)
                     
                     logger.info(f"📊 Strategy 3: Added {len(strategy3_added)} high-quality results")
-                    
-                    # If we still don't have enough high-quality results, fill with lower quality ones
+
                     if needed > 0:
                         logger.warning(f"⚠️ Only found {len(final_candidates)} high-quality results, filling with lower-scoring ones")
-                        
-                        # Collect all low-quality candidates from all strategies
                         all_low_quality = []
                         existing_ids = {c["bug_id"] for c in final_candidates}
-                        
-                        # Low quality from Strategy 1 (highest priority)
+
                         all_low_quality.extend([c for c in low_quality_from_s1 if c["bug_id"] not in existing_ids])
-                        
-                        # Low quality from Strategy 2
+
                         strategy2_low = [c for c in strategy2_candidates 
                                        if c["bug_id"] not in existing_ids and c["score"] < score_threshold]
                         all_low_quality.extend(strategy2_low)
-                        
-                        # Low quality from Strategy 3
+
                         strategy3_low = [c for c in strategy3_candidates 
                                        if c["bug_id"] not in existing_ids and c["score"] < score_threshold]
                         all_low_quality.extend(strategy3_low)
-                        
-                        # Sort by score and take the best low-quality ones
+
                         all_low_quality.sort(key=lambda x: x["score"], reverse=True)
                         final_candidates.extend(all_low_quality[:needed])
-        
-        # Sort final candidates by score for consistency
+
         final_candidates.sort(key=lambda x: x["score"], reverse=True)
         
         logger.info(f"🎯 Final results: {len(final_candidates)} bugs retrieved")
@@ -201,21 +178,19 @@ class BugReportRetriever:
             List[Dict[str, Any]]: List of bug IDs with similarity scores
         """
         try:
-            # Prepare filter for Pinecone query
             # Pinecone expects filters in this format: {"field": {"$eq": "value"}}
             pinecone_filter = {}
             active_filters = {}
             
             for field, value in filters.items():
-                if value:  # Only add non-empty filters
+                if value:  
                     pinecone_filter[field] = {"$eq": value}
                     active_filters[field] = value
             
             logger.info(f"🔍 Executing Pinecone query with {len(active_filters)} active filters: {active_filters}")
             logger.debug(f"🔧 Pinecone filter format: {pinecone_filter}")
             logger.debug(f"📏 Query embedding sample: [{query_embedding[0]:.4f}, {query_embedding[1]:.4f}, ..., {query_embedding[-1]:.4f}]")
-            
-            # Execute the query
+
             if pinecone_filter:
                 logger.info(f"🎯 Querying WITH metadata filters")
                 response = self.index.query(
@@ -233,11 +208,9 @@ class BugReportRetriever:
                 )
             
             logger.info(f"📊 Pinecone returned {len(response.matches)} matches")
-            
-            # Extract bug IDs from the response
+
             candidates: List[Dict[str, Any]] = []
             for i, match in enumerate(response.matches):
-                # The bug_id should be in the metadata
                 bug_id = match.metadata.get('bug_id')
                 score = match.score
                 
@@ -245,7 +218,6 @@ class BugReportRetriever:
                 logger.debug(f"     📂 Full metadata: {match.metadata}")
                 
                 if bug_id:
-                    # Convert float bug IDs to integers for consistency
                     if isinstance(bug_id, (int, float)):
                         bug_id = str(int(float(bug_id)))
                     candidates.append({"bug_id": bug_id, "score": score})
@@ -256,7 +228,7 @@ class BugReportRetriever:
                 logger.warning(f"❌ No valid bug_ids extracted from {len(response.matches)} matches!")
                 if response.matches:
                     logger.info("🔍 Sample match metadata for debugging:")
-                    for i, match in enumerate(response.matches[:2]):  # Show first 2 matches
+                    for i, match in enumerate(response.matches[:2]): 
                         logger.info(f"  Match {i+1} metadata keys: {list(match.metadata.keys())}")
                         logger.info(f"  Match {i+1} metadata: {match.metadata}")
             
@@ -287,13 +259,11 @@ class BugReportRetriever:
             return []
         
         try:
-            # Convert bug IDs to integers to ensure consistent formatting
             normalized_bug_ids = []
             for bug_id in bug_ids:
                 if isinstance(bug_id, (int, float)):
                     normalized_id = str(int(float(bug_id)))
                 else:
-                    # Try to convert string to int (removes .0 if present)
                     try:
                         normalized_id = str(int(float(bug_id)))
                     except (ValueError, TypeError):
@@ -301,9 +271,8 @@ class BugReportRetriever:
                 normalized_bug_ids.append(normalized_id)
             
             logger.info(f"📋 Fetching bug details for {len(normalized_bug_ids)} bugs: {normalized_bug_ids}")
-            
-            # Fetch vectors by their IDs to get full metadata
-            vector_ids = [f"{bug_id}_0" for bug_id in normalized_bug_ids]  # Assuming chunk index 0
+
+            vector_ids = [f"{bug_id}_0" for bug_id in normalized_bug_ids] 
             logger.debug(f"🔍 Looking for vector IDs: {vector_ids}")
             
             response = self.index.fetch(ids=vector_ids)
@@ -333,9 +302,8 @@ def main():
     """
     try:
         retriever = BugReportRetriever()
-        
-        # Example test query (you would get this from embedder in real use)
-        test_embedding = [0.1] * 512  # Dummy 512-dimensional vector
+
+        test_embedding = [0.1] * 512 
         
         # Test the retrieval
         similar_bugs = retriever.retrieve_similar_bugs(

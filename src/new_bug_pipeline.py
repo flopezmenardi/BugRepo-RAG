@@ -19,7 +19,6 @@ from pathlib import Path
 import logging
 from typing import Dict, Any, List
 
-# Add project root to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -29,7 +28,6 @@ from src.retrieval.retriever import BugReportRetriever
 from llm.generate_report import generate_report
 from llm.enhance_prompt import reformulate_bug_query
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -41,11 +39,9 @@ class RAGPipeline:
     def __init__(self):
         """Initialize all pipeline components"""
         logger.info("Initializing RAG Pipeline components...")
-        
-        # Validate configuration
+
         Config.validate_config()
-        
-        # Initialize components
+
         self.embedder = BugReportEmbedder()
         self.retriever = BugReportRetriever()
         logger.info("RAG Pipeline initialized successfully")
@@ -113,14 +109,13 @@ class RAGPipeline:
             with open(file_path, 'r', encoding='utf-8') as f:
                 bug_data = json.load(f)
             
-            # Validate required fields
             required_fields = ["bug_id", "type", "product", "component", "status", "resolution", "updated"]
             missing_fields = [field for field in required_fields if field not in bug_data]
             
             if missing_fields:
                 logger.warning(f"Missing fields in bug report: {missing_fields}")
             
-            # Ensure we have some text to work with
+
             if not bug_data.get('summary') and not bug_data.get('description'):
                 logger.warning("Bug report has no summary or description text")
                 bug_data['summary'] = f"Bug {bug_data.get('bug_id', 'unknown')}"
@@ -151,7 +146,6 @@ class RAGPipeline:
         try:
             enhanced = reformulate_bug_query(original_text)
             
-            # If the LLM determines it's not bug-related, use original text
             if enhanced == "NON-BUG":
                 logger.warning("Query determined as non-bug related, using original text")
                 enhanced = original_text
@@ -181,7 +175,7 @@ class RAGPipeline:
             logger.info(f"✅ Generated embedding with {len(embedding)} dimensions")
             logger.debug(f"📊 Embedding sample: [{embedding[0]:.4f}, {embedding[1]:.4f}, ..., {embedding[-1]:.4f}]")
             
-            # Basic validation
+
             if len(embedding) != 512:
                 logger.error(f"❌ Unexpected embedding dimension: {len(embedding)} (expected 512)")
             
@@ -202,7 +196,6 @@ class RAGPipeline:
             List[Dict[str, Any]]: Similar bug IDs with similarity scores
         """
         try:
-            # Extract filter values and log them
             classification = bug_data.get('classification', '')
             product = bug_data.get('product', '')
             component = bug_data.get('component', '')
@@ -280,13 +273,11 @@ def main():
     
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Initialize and run pipeline
+
     try:
         pipeline = RAGPipeline()
         results = pipeline.process_bug_report(args.bug_report)
-        
-        # Print results
+ 
         print("\n" + "="*50)
         print("RAG PIPELINE RESULTS")
         print("="*50)

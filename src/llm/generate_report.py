@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 from openai import OpenAI
 
-# Ensure project root is on the path for absolute imports
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -82,9 +81,6 @@ class BugReportGenerator:
             output_dir=output_dir,
         )
 
-        # Return both the report path and the prompt messages used to build it.
-        # The caller may want to inspect the prompt (system+user) as the
-        # canonical question text for evaluation.
         return str(report_path), prompt
 
     def _fetch_context(self, similar_bug_ids: List[str]) -> List[Dict[str, Any]]:
@@ -94,7 +90,6 @@ class BugReportGenerator:
             return []
 
         try:
-            # Load the original CSV data to get complete bug information
             csv_path = Config.PROJECT_ROOT / "data" / "bugs_since.csv"
             if not csv_path.exists():
                 logger.error(f"CSV data file not found: {csv_path}")
@@ -102,12 +97,10 @@ class BugReportGenerator:
             
             logger.info(f"Loading bug data from CSV: {csv_path}")
             df = pd.read_csv(csv_path)
-            
-            # Convert bug IDs to integers for matching
+
             normalized_bug_ids = []
             for bug_id in similar_bug_ids:
                 try:
-                    # Convert float strings like "1546498.0" to integers
                     normalized_id = int(float(bug_id))
                     normalized_bug_ids.append(normalized_id)
                 except (ValueError, TypeError):
@@ -115,12 +108,10 @@ class BugReportGenerator:
                     continue
             
             logger.info(f"Looking for bugs with IDs: {normalized_bug_ids}")
-            
-            # Filter dataframe to get matching bugs (new CSV uses 'bug_id' column)
+
             matching_bugs = df[df['bug_id'].isin(normalized_bug_ids)]
             logger.info(f"Found {len(matching_bugs)} matching bugs in CSV")
-            
-            # Convert to list of dictionaries with new field mappings
+   
             context = []
             for _, row in matching_bugs.iterrows():
                 bug_dict = {
@@ -140,11 +131,9 @@ class BugReportGenerator:
                     'blocks': row.get('blocks', ''),
                 }
                 context.append(bug_dict)
-            
-            # Fetch comments for each bug
+
             context = self._enrich_with_comments(context)
-            
-            # Fetch blocked bugs information
+
             context = self._enrich_with_blocked_bugs(context, df)
             
             logger.info(f"Successfully fetched {len(context)} contextual bugs for report generation")
@@ -173,29 +162,24 @@ class BugReportGenerator:
             
             logger.info(f"Loading comments data from CSV: {comments_csv_path}")
             comments_df = pd.read_csv(comments_csv_path)
-            
-            # Get all bug IDs we need comments for
+
             bug_ids = [int(bug['bug_id']) for bug in context]
             logger.info(f"Fetching comments for {len(bug_ids)} bugs")
-            
-            # Filter comments for our bugs
+
             relevant_comments = comments_df[comments_df['bug_id'].isin(bug_ids)]
-            
-            # Group comments by bug_id and limit per bug
+ 
             for bug in context:
                 bug_id = int(bug['bug_id'])
                 bug_comments = relevant_comments[relevant_comments['bug_id'] == bug_id]
-                
-                # Sort by creation_time (most recent first) and limit
+
                 bug_comments = bug_comments.sort_values('creation_time', ascending=False).head(max_comments_per_bug)
-                
-                # Convert to list of comment dictionaries
+
                 comments_list = []
                 for _, comment_row in bug_comments.iterrows():
                     comment_dict = {
                         'comment_id': comment_row.get('comment_id', ''),
                         'creation_time': comment_row.get('creation_time', ''),
-                        'text': comment_row.get('text', '')[:500]  # Truncate long comments
+                        'text': comment_row.get('text', '')[:500]  
                     }
                     comments_list.append(comment_dict)
                 
@@ -207,7 +191,6 @@ class BugReportGenerator:
             
         except Exception as exc:
             logger.error(f"Failed to fetch comments: {exc}")
-            # Add empty comments list if fetching fails
             for bug in context:
                 bug['comments'] = []
         
@@ -232,18 +215,15 @@ class BugReportGenerator:
                 if not blocks_field or pd.isna(blocks_field):
                     bug['blocked_bugs'] = []
                     continue
-                
-                # Parse blocked bug IDs (comma-separated)
                 try:
                     blocked_ids = [int(bid.strip()) for bid in str(blocks_field).split(',') if bid.strip().isdigit()]
                     
                     if not blocked_ids:
                         bug['blocked_bugs'] = []
                         continue
-                    
-                    # Find these bugs in our main dataset
+
                     blocked_bugs_info = []
-                    for blocked_id in blocked_ids[:5]:  # Limit to 5 blocked bugs
+                    for blocked_id in blocked_ids[:5]:
                         blocked_bug_row = main_df[main_df['bug_id'] == blocked_id]
                         if not blocked_bug_row.empty:
                             blocked_info = {
@@ -267,7 +247,6 @@ class BugReportGenerator:
             
         except Exception as exc:
             logger.error(f"Failed to enrich with blocked bugs: {exc}")
-            # Add empty blocked_bugs list if enrichment fails
             for bug in context:
                 bug['blocked_bugs'] = []
         
@@ -337,12 +316,10 @@ class BugReportGenerator:
         bug_id = bug_data.get("bug_id", "unknown")
         status = bug_data.get("status", "NEW")
         resolution = bug_data.get("resolution", "")
-        
-        # Include version if provided by user
+
         version = bug_data.get("version", "")
         version_text = f" (Version: {version})" if version else ""
-        
-        # Include platform if provided
+
         platform = bug_data.get("platform", "")
         platform_text = f"\nPlatform: {platform}" if platform else ""
 
@@ -370,25 +347,22 @@ class BugReportGenerator:
                 f"Status: {bug.get('status', 'unknown')} | Resolution: {bug.get('resolution', 'unknown')}",
             ]
 
-            # Add version if available
             version = bug.get('version')
             if version and version != 'unspecified':
                 block.append(f"Version: {version}")
-            
-            # Add comments if available
+
             comments = bug.get('comments', [])
             if comments:
                 block.append(f"Recent Comments ({len(comments)}):")
-                for i, comment in enumerate(comments[:3], 1):  # Show max 3 comments
-                    comment_text = comment.get('text', '')[:200]  # Truncate to 200 chars
+                for i, comment in enumerate(comments[:3], 1): 
+                    comment_text = comment.get('text', '')[:200]  
                     comment_time = comment.get('creation_time', 'unknown')
                     block.append(f"  Comment {i} ({comment_time[:10]}): {comment_text}{'...' if len(comment.get('text', '')) > 200 else ''}")
-            
-            # Add blocked bugs if available
+
             blocked_bugs = bug.get('blocked_bugs', [])
             if blocked_bugs:
                 block.append(f"Blocks {len(blocked_bugs)} bugs:")
-                for blocked in blocked_bugs[:3]:  # Show max 3 blocked bugs
+                for blocked in blocked_bugs[:3]: 
                     block.append(f"  -> Bug {blocked.get('bug_id', 'N/A')}: {blocked.get('summary', 'N/A')[:100]}{'...' if len(blocked.get('summary', '')) > 100 else ''} [{blocked.get('status', 'N/A')}]")
 
             blocks.append("\n".join(block))

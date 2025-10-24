@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 # ---------- Config ----------
 BASE_URL = "https://bugzilla.mozilla.org/rest"
 OUTPUT_CSV = "bugs_since.csv"
-START_DATE = "2025-01-01"  # UTC; can also be "2025-01-01T00:00:00Z"
-RATE_LIMIT = 0.4  # seconds between requests to be polite
-CHUNK_CAP = 10_000  # Bugzilla hard cap that triggers time-splitting
+START_DATE = "2025-01-01"  # UTC
+RATE_LIMIT = 0.4  
+CHUNK_CAP = 10_000  
 TIMEOUT = 60
 
 # ---------- Fields we want (and will write to CSV) ----------
@@ -30,7 +30,7 @@ CSV_FIELDS = [
     "blocks",
 ]
 
-# Exactly match Bugzilla field names for include_fields
+#Bugzilla field names for include_fields
 INCLUDE_FIELDS = [
     "id",
     "flags",
@@ -84,10 +84,9 @@ def fetch_chunk(session: requests.Session, start_iso: str) -> list[dict]:
     Limit to include_fields; return list of bug dicts.
     """
     params = {
-        "creation_time": start_iso,               # >= this moment
+        "creation_time": start_iso,              
         "include_fields": ",".join(INCLUDE_FIELDS),
         "limit": str(CHUNK_CAP),
-        # Note: Bugzilla will cap anyway; explicit limit makes intent clear.
     }
     url = f"{BASE_URL}/bug"
     r = session.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
@@ -101,14 +100,14 @@ def filter_bug(b: dict) -> bool:
 
 def extract_row(b: dict) -> dict:
     """Map a Bugzilla bug to our CSV row schema."""
-    # flags: collect all type_id values
+    
     flag_type_ids = []
     for fl in (b.get("flags") or []):
         tid = fl.get("type_id")
         if tid is not None:
             flag_type_ids.append(str(tid))
 
-    # blocks is an array of ints; join as comma-separated
+    
     blocks = b.get("blocks") or []
     blocks_str = ",".join(str(x) for x in blocks) if blocks else ""
 
@@ -132,7 +131,7 @@ def extract_row(b: dict) -> dict:
 
 def main():
     start_dt = parse_start_date(START_DATE)
-    seen_ids = set()          # de-dup across chunks, just in case
+    seen_ids = set()          
     total_kept = 0
     chunk_ix = 0
 
@@ -153,17 +152,17 @@ def main():
                 break
 
             # Sort by creation_time to get a reliable last timestamp
-            # (strings like "2025-01-01T00:00:42Z" sort correctly)
+            # 2025-01-01T00:00:42Z
             bugs.sort(key=lambda x: x.get("creation_time", ""))
 
-            # Filter and write rows
+            
             kept_in_chunk = 0
             for b in bugs:
-                # Skip already seen
+                
                 bid = b.get("id")
                 if bid in seen_ids:
                     continue
-                # Filter: confirmed & not duplicate
+                
                 if not filter_bug(b):
                     continue
                 row = extract_row(b)
@@ -174,21 +173,20 @@ def main():
             total_kept += kept_in_chunk
             print(f"  Retrieved: {len(bugs):5d} | kept (filtered & unique): {kept_in_chunk:5d} | total kept: {total_kept}")
 
-            # If we hit the cap, advance the start time to last bug's creation_time + 1s
+            
             if len(bugs) >= CHUNK_CAP:
                 last_ct = bugs[-1].get("creation_time")
                 if not last_ct:
-                    # safety: if last bug has no creation_time (shouldn't happen), stop
                     print("  Last bug missing creation_time. Stopping to avoid loop.")
                     break
-                # Move start forward by 1 second to avoid re-fetching the same last record
+                
                 last_dt = parse_start_date(last_ct)
                 current_start = last_dt + timedelta(seconds=1)
                 print(f"  Cap reached ({CHUNK_CAP}). Advancing start to {iso_utc(current_start)}")
                 time.sleep(RATE_LIMIT)
                 continue
 
-            # Otherwise, we’re done (final chunk < cap)
+           
             print("Final chunk under cap. Completed.")
             break
 

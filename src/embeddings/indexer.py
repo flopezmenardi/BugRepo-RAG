@@ -8,14 +8,13 @@ import logging
 from tqdm import tqdm
 import sys
 
-# Add project root to path for imports
+
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import Config
 from src.embeddings.embedder import BugReportEmbedder
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -40,19 +39,16 @@ class BugReportIndexer:
             test_limit (int): Limit number of bugs to process for testing. None for all bugs.
             start_offset (int): Skip the first N bugs (0 = start from beginning).
         """
-        # Validate configuration
+
         Config.validate_config()
-        
-        # Initialize components
+
         self.embedder = BugReportEmbedder()
         self.index_name = index_name or Config.PINECONE_INDEX_NAME
         self.test_limit = test_limit
         self.start_offset = start_offset
-        
-        # Initialize Pinecone
+
         self._init_pinecone()
-        
-        # Build status message
+  
         status_parts = []
         if self.start_offset > 0:
             status_parts.append(f"starting from bug #{self.start_offset + 1}")
@@ -69,12 +65,10 @@ class BugReportIndexer:
     def _init_pinecone(self):
         """Initialize Pinecone client and connect to existing index"""
         try:
-            # Initialize Pinecone client with new API
             self.pc = Pinecone(
                 api_key=Config.PINECONE_API_KEY
             )
             
-            # Connect directly to the existing index
             self.index = self.pc.Index(self.index_name)
             logger.info(f"Connected to Pinecone index: {self.index_name}")
             
@@ -93,20 +87,17 @@ class BugReportIndexer:
             Dict[str, Any]: Summary of indexing results
         """
         logger.info("Starting bug report indexing process...")
-        
-        # Use default data directory if no path provided
+
         if data_path is None:
             data_path = Config.DATA_DIR
-        
-        # Load raw data
+
         raw_data = self._load_raw_data(data_path)
         if not raw_data:
             logger.warning("No data found to index")
             return {"status": "no_data", "indexed_count": 0}
         
         logger.info(f"Loaded {len(raw_data)} raw bug reports")
-        
-        # Process data through the pipeline
+
         processed_chunks = self._process_data_pipeline(raw_data)
         
         if not processed_chunks:
@@ -114,8 +105,7 @@ class BugReportIndexer:
             return {"status": "no_chunks", "indexed_count": 0}
         
         logger.info(f"Generated {len(processed_chunks)} chunks for indexing")
-        
-        # Generate embeddings and store in Pinecone
+
         indexing_results = self._index_chunks(processed_chunks)
         
         logger.info("Bug report indexing completed successfully")
@@ -134,7 +124,6 @@ class BugReportIndexer:
         data_path = Path(data_path)
         
         try:
-            # If it's a directory, look for bugs_since.csv (new dataset)
             if data_path.is_dir():
                 csv_file = data_path / "bugs_since.csv"
             else:
@@ -143,18 +132,15 @@ class BugReportIndexer:
             if not csv_file.exists():
                 logger.warning(f"CSV file does not exist: {csv_file}")
                 return []
-            
-            # Load the structured CSV
+
             df = pd.read_csv(csv_file)
             logger.info(f"Loaded CSV with columns: {list(df.columns)}")
             original_count = len(df)
-            
-            # Apply start_offset if specified
+
             if self.start_offset > 0:
                 df = df.iloc[self.start_offset:]
                 logger.info(f"Skipped first {self.start_offset} bugs, {len(df)} remaining")
-            
-            # Apply test_limit if specified (after offset)
+  
             if self.test_limit:
                 df = df.head(self.test_limit)
                 end_bug = self.start_offset + len(df)
@@ -162,8 +148,7 @@ class BugReportIndexer:
             elif self.start_offset > 0:
                 end_bug = self.start_offset + len(df) 
                 logger.info(f"Processing bugs #{self.start_offset + 1}-{end_bug} ({len(df)} bugs) out of {original_count} total")
-            
-            # Convert to list of dictionaries
+
             bug_reports = df.to_dict('records')
             
             logger.info(f"Loaded {len(bug_reports)} bug reports from {csv_file}")
@@ -191,23 +176,17 @@ class BugReportIndexer:
         
         for i, bug_report in enumerate(tqdm(raw_data, desc="Processing bug reports")):
             try:
-                # Extract the summary for embedding (new CSV format uses lowercase 'summary')
                 summary = bug_report.get('summary', '')
                 bug_id_raw = bug_report.get('bug_id', i)
                 
                 if not summary or summary.strip() == '':
                     logger.warning(f"Bug {bug_id_raw} has no summary, skipping")
                     continue
-                
-                # Clean the summary text (basic cleaning only)
+
                 cleaned_summary = self._basic_clean_text(summary)
-                
-                # Check if summary needs splitting (fallback for very long summaries)
                 chunks = self._split_if_needed(cleaned_summary)
-                
-                # Create chunk data for each piece (usually just one)
+
                 for j, chunk_text in enumerate(chunks):
-                    # Ensure bug ID is always an integer (convert float to int if needed)
                     bug_id = int(float(bug_id_raw)) if isinstance(bug_id_raw, (int, float, str)) else i
                     
                     chunk_data = {
@@ -216,7 +195,7 @@ class BugReportIndexer:
                         "original_bug_id": bug_id,
                         "chunk_index": j,
                         "metadata": {
-                            "bug_id": str(bug_id),  # Store as string for consistency
+                            "bug_id": str(bug_id),  
                             "product": self._clean_metadata_value(bug_report.get('product', '')),
                             "component": self._clean_metadata_value(bug_report.get('component', '')),
                             "status": self._clean_metadata_value(bug_report.get('status', '')),
@@ -244,19 +223,14 @@ class BugReportIndexer:
         """
         import pandas as pd
         import numpy as np
-        
-        # Handle NaN values (from pandas and numpy)
+
         if pd.isna(value) or (hasattr(np, 'isnan') and isinstance(value, float) and np.isnan(value)):
             return ""
-        
-        # Handle None values
+
         if value is None:
             return ""
-        
-        # Convert to string and strip
+
         str_value = str(value).strip()
-        
-        # Handle common problematic values
         if str_value.lower() in ['nan', 'none', 'null', '<na>']:
             return ""
         
@@ -274,10 +248,9 @@ class BugReportIndexer:
         """
         if not text:
             return ""
-        
-        # Basic cleaning - remove extra whitespace and newlines
+
         cleaned = text.strip()
-        cleaned = " ".join(cleaned.split())  # Normalize whitespace
+        cleaned = " ".join(cleaned.split())
         
         return cleaned
     
@@ -291,26 +264,22 @@ class BugReportIndexer:
         Returns:
             List[str]: List of text chunks (usually just one)
         """
-        # Most bug summaries should be short, but just in case...
-        max_chars = 2000  # Conservative limit for embeddings
-        
+        max_chars = 2000  
         if len(text) <= max_chars:
             return [text]
         
         logger.warning(f"Long summary detected ({len(text)} chars), splitting...")
         
-        # Simple split at word boundaries
+ 
         chunks = []
         start = 0
-        
         while start < len(text):
             end = start + max_chars
             
             if end >= len(text):
                 chunks.append(text[start:])
                 break
-            
-            # Try to split at word boundary
+
             split_point = text.rfind(' ', start, end)
             if split_point == -1 or split_point <= start:
                 split_point = end
@@ -332,18 +301,16 @@ class BugReportIndexer:
         """
         logger.info(f"Generating embeddings and indexing {len(chunks)} chunks...")
         
-        # Prepare data for batch processing
+
         texts = [chunk['text'] for chunk in chunks]
-        
-        # Generate embeddings in batches
+
         logger.info(f"📊 Generating embeddings for {len(texts)} texts...")
         all_embeddings = self.embedder.embed_texts(texts)
-        
-        # Prepare vectors for Pinecone
+
         vectors_to_upsert = []
         
         for i, (chunk, embedding) in enumerate(zip(chunks, all_embeddings)):
-            # Clean all metadata values to avoid NaN issues
+
             cleaned_metadata = {}
             for key, value in chunk['metadata'].items():
                 cleaned_metadata[key] = self._clean_metadata_value(value)
@@ -352,15 +319,14 @@ class BugReportIndexer:
                 "id": chunk['id'],
                 "values": embedding,
                 "metadata": {
-                    "text": chunk['text'][:1000],  # Truncate for metadata storage
+                    "text": chunk['text'][:1000],  
                     "original_bug_id": chunk['original_bug_id'],
                     "chunk_index": chunk['chunk_index'],
                     **cleaned_metadata
                 }
             }
             vectors_to_upsert.append(vector_data)
-        
-        # Batch upsert to Pinecone
+
         batch_size = 100
         total_upserted = 0
         
@@ -369,7 +335,6 @@ class BugReportIndexer:
         for i in tqdm(range(0, len(vectors_to_upsert), batch_size), desc="Upserting to Pinecone"):
             batch = vectors_to_upsert[i:i + batch_size]
             try:
-                # Add validation logging for first batch to help debug
                 if i == 0:
                     logger.debug(f"First batch sample metadata: {batch[0]['metadata']}")
                 
@@ -378,7 +343,6 @@ class BugReportIndexer:
                     
             except Exception as e:
                 logger.error(f"Error upserting batch {i//batch_size + 1}: {str(e)}")
-                # Log problematic batch for debugging
                 if len(batch) > 0:
                     logger.error(f"Problematic batch sample - ID: {batch[0]['id']}, metadata keys: {list(batch[0]['metadata'].keys())}")
                     logger.error(f"Sample metadata values: {batch[0]['metadata']}")
@@ -423,19 +387,16 @@ def main():
     Can be called directly: python src/embeddings/indexer.py
     """
     try:
-        # Initialize with batch processing parameters
-        # Examples:
         # BugReportIndexer(test_limit=1000, start_offset=0)     # First 1000 bugs (1-1000)
         # BugReportIndexer(test_limit=1000, start_offset=1000)  # Next 1000 bugs (1001-2000)
         # BugReportIndexer(test_limit=None, start_offset=0)     # All bugs from beginning
         indexer = BugReportIndexer(test_limit=3384, start_offset=40000)
         
-        # Test connection
+
         if not indexer.embedder.test_connection():
             logger.error("Failed to connect to OpenAI. Check your API key.")
             return
         
-        # Run indexing
         results = indexer.index_bug_reports()
         
         print("\n" + "="*50)

@@ -6,13 +6,11 @@ import logging
 import sys
 from pathlib import Path
 
-# Add project root to path for imports
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.config import Config
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -29,13 +27,10 @@ class BugReportEmbedder:
             model_name (str): Name of the embedding model to use. 
                              Defaults to Config.EMBEDDING_MODEL
         """
-        # Validate configuration
+
         Config.validate_config()
-        
-        # Set up OpenAI client with new API
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
-        # Set model
         self.model_name = model_name or Config.EMBEDDING_MODEL
         self.batch_size = Config.EMBEDDING_BATCH_SIZE
         
@@ -52,15 +47,15 @@ class BugReportEmbedder:
             List[float]: Embedding vector
         """
         try:
-            # Clean the text
+
             cleaned_text = self._clean_text(text)
             
-            # Generate embedding with specific dimensions for text-embedding-3-small
+            
             if "text-embedding-3-small" in self.model_name:
                 response = self.client.embeddings.create(
                     model=self.model_name,
                     input=cleaned_text,
-                    dimensions=512  # Specify 512 dimensions for Pinecone compatibility
+                    dimensions=512  #  512 dimensions Pinecone compatibility
                 )
             else:
                 response = self.client.embeddings.create(
@@ -92,13 +87,12 @@ class BugReportEmbedder:
         
         all_embeddings = []
         
-        # Process in batches to avoid rate limits
+    
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
             batch_embeddings = self._embed_batch(batch)
             all_embeddings.extend(batch_embeddings)
             
-            # Add a small delay to respect rate limits
             if i + self.batch_size < len(texts):
                 time.sleep(0.1)
         
@@ -116,15 +110,13 @@ class BugReportEmbedder:
             List[List[float]]: List of embedding vectors
         """
         try:
-            # Clean all texts in the batch
             cleaned_texts = [self._clean_text(text) for text in texts]
             
-            # Generate embeddings for the batch with specific dimensions
             if "text-embedding-3-small" in self.model_name:
                 response = self.client.embeddings.create(
                     model=self.model_name,
                     input=cleaned_texts,
-                    dimensions=512  # Specify 512 dimensions for Pinecone compatibility
+                    dimensions=512  # 512 dimensions Pinecone compatibility
                 )
             else:
                 response = self.client.embeddings.create(
@@ -132,7 +124,6 @@ class BugReportEmbedder:
                     input=cleaned_texts
                 )
             
-            # Extract embeddings from response
             embeddings = [item.embedding for item in response.data]
             
             logger.debug(f"Generated embeddings for batch of {len(texts)} texts")
@@ -140,7 +131,6 @@ class BugReportEmbedder:
             
         except Exception as e:
             logger.error(f"Error generating batch embeddings: {str(e)}")
-            # Fallback: try individual embeddings
             logger.info("Falling back to individual embedding generation")
             return [self.embed_text(text) for text in texts]
     
@@ -157,12 +147,10 @@ class BugReportEmbedder:
         if not text:
             return ""
         
-        # Basic cleaning - remove extra whitespace and newlines
         cleaned = text.strip()
         cleaned = " ".join(cleaned.split())
         
-        # Truncate if too long (OpenAI has token limits)
-        max_chars = 8000  # Conservative limit
+        max_chars = 8000 
         if len(cleaned) > max_chars:
             cleaned = cleaned[:max_chars]
             logger.warning(f"Text truncated to {max_chars} characters")
@@ -176,7 +164,6 @@ class BugReportEmbedder:
         Returns:
             int: Embedding dimension
         """
-        # Return dimensions for known OpenAI models
         if "ada-002" in self.model_name:
             return 1536
         elif "text-embedding-3-small" in self.model_name:
@@ -184,7 +171,6 @@ class BugReportEmbedder:
         elif "text-embedding-3-large" in self.model_name:
             return 3072
         else:
-            # Could make a test call to determine dimension
             logger.warning(f"Unknown dimension for model {self.model_name}, assuming 512")
             return 512
     
