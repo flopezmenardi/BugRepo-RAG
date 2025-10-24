@@ -17,6 +17,11 @@ PINECONE_ENVIRONMENT=us-east-1
 PINECONE_INDEX_NAME=bugrepo
 ```
 
+**Important:** Decompress the bug comments file before running:
+```bash
+data/bugs_comments.csv.gz
+```
+
 ### 2. Index Bug Database (One-time setup)
 Creates embeddings for all bugs in `data/bugs_since.csv` and stores them in Pinecone:
 
