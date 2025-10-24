@@ -40,7 +40,7 @@ python src/new_bug_pipeline.py test_bug.json
 Run RAGAS metrics to evaluate retrieval and generation quality:
 
 ```bash
-python -m src.evaluation.metrics --limit 10
+python -m src.evaluation.metrics
 ```
 
 **Output**: Precision, recall, relevancy, and faithfulness scores printed to console and saved as CSV.
