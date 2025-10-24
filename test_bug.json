@@ -1,6 +1,7 @@
 {
     "bug_id": "test_001",
     "type": "defect",
+    "classification": "Client Software",
     "product": "Firefox",
     "component": "General",
     "status": "NEW",
